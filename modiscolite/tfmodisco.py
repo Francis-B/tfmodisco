@@ -592,12 +592,15 @@ def TFMoDISco(
         hypothetical_contribs=hypothetical_contribs,
     )
 
+    # Sum the contibution scores to get one contribution score per base
     if len(contrib_scores.shape) == 1:
         summed_scores = np.array([c.sum(axis=1) for c in contrib_scores], dtype=object)
     elif len(contrib_scores.shape) == 3:
         summed_scores = contrib_scores.sum(axis=2)
     else:
         raise ValueError("contrib_scores has incorrect dimensions")
+
+    # Get seqlets and threshold to filter out weak seqlets
     seqlet_coords, threshold = extract_seqlets.extract_seqlets(
         attribution_scores=summed_scores,
         window_size=sliding_window_size,
@@ -612,6 +615,8 @@ def TFMoDISco(
     seqlets = track_set.create_seqlets(seqlet_coords)
 
     pos_seqlets, neg_seqlets = [], []
+
+    # Split seqlets based on the sign of contribution scores
     for seqlet in seqlets:
         flank = int(0.5 * (len(seqlet) - sliding_window_size))
         attr = np.sum(seqlet.contrib_scores[flank:-flank])
@@ -692,4 +697,3 @@ def TFMoDISco(
         neg_patterns = None
 
     return pos_patterns, neg_patterns
-

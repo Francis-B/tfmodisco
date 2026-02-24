@@ -18,7 +18,28 @@ def _bin_mode(values, bins=1000):
 
 
 def _laplacian_null(track, window_size, num_to_samp, random_seed=1234):
-    percentiles_to_use = np.array([5 * (x + 1) for x in range(19)])
+    """
+    Get null distribution using Laplacian.
+
+    Parameters
+    ----------
+    track : np.ndarray
+        Smoothed track of contribution scores.
+    window_size : int
+        Deprecated.
+    num_to_samp : int
+        Number of values to use for the null distribution.
+    random_seed : int
+        Random seed to use to controll sampling.
+
+    Returns
+    -------
+    pos_values
+        Positive values of the null distribution.
+    neg_values
+        Negative values of the null distribution.
+    """
+    percentiles_to_use = np.array([5 * x for x in range(1, 20)])
 
     rng = np.random.RandomState()
     values = np.concatenate(track, axis=0)
@@ -60,8 +81,13 @@ def _laplacian_null(track, window_size, num_to_samp, random_seed=1234):
     return sampled_vals[sampled_vals >= 0], sampled_vals[sampled_vals < 0]
 
 
-def _iterative_extract_seqlets(score_track, window_size, flank, suppress):
-    n = len(score_track)
+def _iterative_extract_seqlets(score_track, window, flank, center=True):
+    """
+    Extract all seqlet window with significant contribution scores from given
+    contribution score array
+    """
+    suppress = int(0.5 * window) + flank
+
     seqlets = []
     for example_idx, single_score_track in enumerate(score_track):
         length = len(single_score_track)
@@ -69,6 +95,7 @@ def _iterative_extract_seqlets(score_track, window_size, flank, suppress):
             if len(single_score_track) == 0:
                 break
 
+            # Get coordinate of most important base
             argmax = np.argmax(single_score_track, axis=0)
             max_val = single_score_track[argmax]
 
@@ -78,13 +105,22 @@ def _iterative_extract_seqlets(score_track, window_size, flank, suppress):
                 break
 
             # need to be able to expand without going off the edge
+
             if argmax >= flank and argmax < (length - flank):
-                seqlet = core.Seqlet(
-                    example_idx=example_idx,
-                    start=argmax - flank,
-                    end=argmax + window_size + flank,
-                    is_revcomp=False,
-                )
+                if center:
+                    seqlet = core.Seqlet(
+                        example_idx=example_idx,
+                        start=argmax - flank - (window // 2),
+                        end=argmax + flank + (window // 2),
+                        is_revcomp=False,
+                    )
+                else:
+                    seqlet = core.Seqlet(
+                        example_idx=example_idx,
+                        start=argmax - flank,
+                        end=argmax + window + flank,
+                        is_revcomp=False,
+                    )
 
                 seqlets.append(seqlet)
 
@@ -97,14 +133,37 @@ def _iterative_extract_seqlets(score_track, window_size, flank, suppress):
 
 
 def _smooth_and_split(tracks, window_size, subsample_cap=1000000):
-    n = len(tracks)
+    """
+    Get smoothed contribion scores by computing cumulative sum of each
+    nucleotide sequences and normalising it with substraction of neighboor
+    scores.
+
+    Parameters
+    ---------
+    tracks : np.ndarray
+        Contribution score of each base.
+    window_size : int
+        Size of the rolling window. Used to get the `rolling_window` th neighboor
+        when normalising.
+    subsample_cap : int, default=1000000
+        Maximum number of values to use for null distribution.
+
+    Returns
+    -------
+    pos_values : np.ndarray
+        All positive scores sorted.
+    neg_values : np.ndarray
+        All negative scores sorted.
+    tracks : np.ndarray
+        Smoothed contribution scores. Will be of size (n, l-window_size, 1), where
+        n and l are the shape of the 2 first axis of `tracks` respectively.
+    """
 
     if len(tracks.shape) == 1:
-        tracks = [
-            np.hstack([np.array([0]), np.cumsum(track, axis=-1)]) for track in tracks
-        ]
+        tracks = [np.hstack([0, np.cumsum(track, axis=-1)]) for track in tracks]
         tracks = [track[window_size:] - track[:-window_size] for track in tracks]
     else:
+        n = len(tracks)
         tracks = np.hstack([np.zeros((n, 1)), np.cumsum(tracks, axis=-1)])
         tracks = tracks[:, window_size:] - tracks[:, :-window_size]
 
@@ -120,12 +179,17 @@ def _smooth_and_split(tracks, window_size, subsample_cap=1000000):
 
     neg_values = values[values < 0]
     neg_values = np.sort(neg_values)[::-1]
+
     return pos_values, neg_values, tracks
 
 
 def _isotonic_thresholds(
     values, null_values, increasing, target_fdr, min_frac_neg=0.95
 ):
+    """
+    Get score contribution at which to filter seqlets to respect given
+    FDR.
+    """
     n1, n2 = len(values), len(null_values)
 
     X = np.concatenate([values, null_values], axis=0)
@@ -157,28 +221,23 @@ def _isotonic_thresholds(
 
 def _refine_thresholds(
     vals,
-    pos_threshold,
-    neg_threshold,
+    threshold,
     min_passing_windows_frac,
     max_passing_windows_frac,
 ):
-    frac_passing_windows = (
-        sum(vals >= pos_threshold) + sum(vals <= neg_threshold)
-    ) / float(len(vals))
+    frac_passing_windows = sum(vals >= threshold) / float(len(vals))
 
     if frac_passing_windows < min_passing_windows_frac:
-        pos_threshold = np.percentile(
+        threshold = np.percentile(
             a=np.abs(vals), q=100 * (1 - min_passing_windows_frac)
         )
-        neg_threshold = -pos_threshold
 
     if frac_passing_windows > max_passing_windows_frac:
-        pos_threshold = np.percentile(
+        threshold = np.percentile(
             a=np.abs(vals), q=100 * (1 - max_passing_windows_frac)
         )
-        neg_threshold = -pos_threshold
 
-    return pos_threshold, neg_threshold
+    return threshold
 
 
 def extract_seqlets(
@@ -195,15 +254,19 @@ def extract_seqlets(
     logger = logging.getLogger("modisco-lite")
     logger.info(f"Extracting seqlets for {attribution_scores.shape[0]} tasks:")
 
+    # Get smoothed track (cumulative sum of contribution and normalized by
+    # subtracting neighbooring value)
     logger.info("- Smoothing and splitting tracks")
     pos_values, neg_values, smoothed_tracks = _smooth_and_split(
         attribution_scores, window_size
     )
+
     logger.info("- Computing null values with Laplacian null model")
     pos_null_values, neg_null_values = _laplacian_null(
         track=smoothed_tracks, window_size=window_size, num_to_samp=10000
     )
 
+    # Get the threshold values accordingly to the given FDR
     logger.info("- Computing isotonic thresholds")
     pos_threshold = _isotonic_thresholds(
         pos_values, pos_null_values, increasing=True, target_fdr=target_fdr
@@ -213,10 +276,17 @@ def extract_seqlets(
     )
 
     logger.info("- Refining thresholds")
-    pos_threshold, neg_threshold = _refine_thresholds(
-        vals=np.concatenate([pos_values, neg_values], axis=0),
-        pos_threshold=pos_threshold,
-        neg_threshold=neg_threshold,
+    # Correct threshold if the proportion of accepted seqlets doesn't fall into the
+    # provided proportion range
+    pos_threshold = _refine_thresholds(
+        vals=pos_values,
+        threshold=pos_threshold,
+        min_passing_windows_frac=min_passing_windows_frac,
+        max_passing_windows_frac=max_passing_windows_frac,
+    )
+    neg_threshold = _refine_thresholds(
+        vals=neg_values,
+        threshold=neg_threshold,
         min_passing_windows_frac=min_passing_windows_frac,
         max_passing_windows_frac=max_passing_windows_frac,
     )
@@ -235,6 +305,7 @@ def extract_seqlets(
         / len(distribution)
     )
 
+    # Replace values not respecting thresholds
     if isinstance(smoothed_tracks, list):
         for smoothed_track in smoothed_tracks:
             idxs = (smoothed_track >= pos_threshold) | (smoothed_track <= neg_threshold)
@@ -257,10 +328,9 @@ def extract_seqlets(
 
     logger.info("- Extracting seqlets")
     seqlets = _iterative_extract_seqlets(
-        score_track=smoothed_tracks,
-        window_size=window_size,
+        score_track=attribution_scores,  # TODO: set back to smoothed_track if not working
+        window=window_size,
         flank=flank,
-        suppress=suppress,
     )
 
     # find the weakest transformed threshold used across all tasks
