@@ -87,6 +87,35 @@ def _align_patterns(
     include_hypothetical,
     stranded=False,
 ):
+    """
+    Align seqlets from a cluster to form a pattern.
+
+    Parameters
+    ----------
+    parent_pattern : Seqlet
+        Highest scoring Seqlet of a cluster used to initialize the pattern.
+    child_pattern : list[Seqlet]
+        All other Seqlet from a cluster to use to build up the pattern.
+    metric : callable
+        Function to use to calculate similarity. This is usually the pearson_correlation
+        from the affinitymat.py.
+    transformer : str
+
+    include_hypothetical : bool
+
+    stranded : bool, default=False
+        If True, use only the given sequence (do not generate reverse complement)
+
+    Returns
+    -------
+    np.ndarray
+        Position yielding the best correlation between parent_pattern and child_pattern.
+    bool
+        Tells whether or not the reverse complement seqlet is better.
+    float
+        Best correlation score.
+
+    """
     fwd_data_parent, _ = util.get_2d_data_from_patterns(
         [parent_pattern],
         transformer=transformer,
@@ -103,12 +132,14 @@ def _align_patterns(
         fwd_data_child, fwd_data_parent, min_overlap
     ).squeeze()
 
-    best_crossmetric_rev, best_crossmetric_argmax_rev = metric(
-        rev_data_child, fwd_data_parent, min_overlap
-    ).squeeze()
+    if not stranded:
+        best_crossmetric_rev, best_crossmetric_argmax_rev = metric(
+            rev_data_child, fwd_data_parent, min_overlap
+        ).squeeze()
 
-    if (best_crossmetric_rev > best_crossmetric) and (not stranded):
-        return int(best_crossmetric_argmax_rev), True, best_crossmetric_rev
+        rev_is_best = best_crossmetric > best_crossmetric
+        return int(best_crossmetric_argmax_rev), rev_is_best, best_crossmetric_rev
+
     else:
         return int(best_crossmetric_argmax), False, best_crossmetric
 
@@ -120,9 +151,31 @@ def merge_in_seqlets_filledges(
     metric,
     min_overlap,
     transformer="l1",
-    include_hypothetical=True,
+    include_hypothetical=False,
     stranded=False,
 ):
+    """
+
+    Parameters
+    ----------
+    parent_pattern : Seqlet
+        Highest scoring Seqlet of a cluster used to initialize the pattern.
+    seqlets_to_merge : list[Seqlet]
+        All other Seqlet from a cluster to use to build up the pattern.
+    track_set : core.TrackSet
+        TrackSet that keep track of one-hot encoded sequences and attribution scores.
+    metric : callable
+        Function to use to calculate similarity. This is usually the pearson_correlation
+        from the affinitymat.py.
+    min_overlap : float
+        Minimum overlap between parent_pattern and seqlets_to_merge when aligning.
+    transformer : str, default='l1'
+        Function to use to get
+    include_hypothetical : bool
+
+    stranded : bool, default=False
+        If True, use only the given sequence (do not generate reverse complement)
+    """
     parent_pattern = parent_pattern.copy()
 
     for seqlet in seqlets_to_merge:
@@ -136,7 +189,7 @@ def merge_in_seqlets_filledges(
             stranded,
         )
 
-        if revcomp_match:
+        if not stranded and revcomp_match:
             seqlet = seqlet.revcomp()
 
         preexpansion_seqletlen = len(seqlet)
@@ -625,4 +678,3 @@ def SimilarPatternsCollapser(
             current_level_nodes = next_level_nodes
 
     return patterns, PatternMergeHierarchy(root_nodes=current_level_nodes)
-
