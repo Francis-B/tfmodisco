@@ -1,5 +1,4 @@
-# tfmodisco.py
-# Authors: Jacob Schreiber <jmschreiber91@gmail.com>
+# tfmodisco.py Authors: Jacob Schreiber <jmschreiber91@gmail.com>
 # adapted from code written by Avanti Shrikumar
 
 import logging
@@ -124,6 +123,22 @@ def _patterns_from_clusters(
     track_sign,
     stranded=False,
 ):
+    """
+    Create patterns from Seqlets from clusters.
+
+    Parameters
+    ----------
+    seqlets : list[Seqlet]
+    track_set : core.TrackSet
+
+    min_overlap : int
+        Minimum overlap
+    min_frac :
+
+
+    Returns
+    -------
+    """
     seqlet_sort_metric = lambda x: -np.sum(np.abs(x.contrib_scores))
     num_clusters = max(cluster_indices + 1)
     cluster_to_seqlets = defaultdict(list)
