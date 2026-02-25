@@ -88,11 +88,13 @@ def _iterative_extract_seqlets(score_track, window, flank, center=True):
     """
     suppress = int(0.5 * window) + flank
 
+    total_flank = flank + (window // 2)
+
     seqlets = []
     for example_idx, single_score_track in enumerate(score_track):
         length = len(single_score_track)
         while True:
-            if len(single_score_track) == 0:
+            if len(single_score_track) <= total_flank + 1:
                 break
 
             # Get coordinate of most important base
@@ -105,24 +107,36 @@ def _iterative_extract_seqlets(score_track, window, flank, center=True):
                 break
 
             # need to be able to expand without going off the edge
+            if argmax >= total_flank and argmax <= (length - total_flank):
+                seqlet = core.Seqlet(
+                    example_idx=example_idx,
+                    start=argmax - flank - (window // 2),
+                    end=argmax + flank + (window // 2),
+                    is_revcomp=False,
+                )
+            # Move seqlet window to the right
+            elif argmax < total_flank:
+                seqlet = core.Seqlet(
+                    example_idx=example_idx,
+                    start=0,
+                    end=1 + total_flank * 2,
+                    is_revcomp=False,
+                )
+            # Move seqlet window to the left
+            elif argmax > (length - total_flank):
+                seqlet = core.Seqlet(
+                    example_idx=example_idx,
+                    start=length - 1 - total_flank * 2,
+                    end=length,
+                    is_revcomp=False,
+                )
+            else:
+                print("total_flank:", total_flank)
+                print("armax:", argmax)
+                print("length:", length)
+                raise ValueError("No conditions were met by argmax:window_size")
 
-            if argmax >= flank and argmax < (length - flank):
-                if center:
-                    seqlet = core.Seqlet(
-                        example_idx=example_idx,
-                        start=argmax - flank - (window // 2),
-                        end=argmax + flank + (window // 2),
-                        is_revcomp=False,
-                    )
-                else:
-                    seqlet = core.Seqlet(
-                        example_idx=example_idx,
-                        start=argmax - flank,
-                        end=argmax + window + flank,
-                        is_revcomp=False,
-                    )
-
-                seqlets.append(seqlet)
+            seqlets.append(seqlet)
 
             # suppress the chunks within +- suppress
             l_idx = int(max(np.floor(argmax + 0.5 - suppress), 0))
@@ -250,7 +264,6 @@ def extract_seqlets(
     max_passing_windows_frac,
     weak_threshold_for_counting_sign,
 ):
-
     logger = logging.getLogger("modisco-lite")
     logger.info(f"Extracting seqlets for {attribution_scores.shape[0]} tasks:")
 
