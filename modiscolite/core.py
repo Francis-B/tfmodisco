@@ -234,7 +234,7 @@ class SeqletSet:
         return SeqletSet(seqlets=new_seqlets)
 
     def _add_seqlet(self, seqlet):
-        n = len(seqlet)
+        n = seqlet.sequence.shape[0]
 
         self.seqlets.append(seqlet)
         self.unique_seqlets[seqlet.string] = seqlet
