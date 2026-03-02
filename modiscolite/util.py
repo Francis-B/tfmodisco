@@ -36,6 +36,20 @@ def cpu_sliding_window_sum(arr, window_size):
 
 @njit("float64(float64, float64[:])")
 def binary_search_perplexity(desired_perplexity, distances):
+    """
+
+    Parameters
+    ----------
+    desired_perplexity :
+        Desired perplexity for the cluster.
+    distances : np.ndarray
+        Row of a csr_matrix.
+
+    Returns
+    -------
+    float
+    """
+
     EPSILON_DBL = 1e-8
     PERPLEXITY_TOLERANCE = 1e-5
     n_steps = 100
@@ -74,17 +88,23 @@ def binary_search_perplexity(desired_perplexity, distances):
 
 
 def compute_per_position_ic(ppm, background, pseudocount):
-    """Compute information content at each position of ppm.
+    """
+    Compute information content at each position of ppm.
 
-    Arguments:
-            ppm: should have dimensions of length x alphabet. Entries along the
-                    alphabet axis should sum to 1.
-            background: the background base frequencies
-            pseudocount: pseudocount to be added to the probabilities of the ppm
-                    to prevent overflow/underflow.
+    Arguments
+    ---------
+    ppm : np.ndarray
+        Should have dimensions of length x alphabet. Entries along the
+        alphabet axis should sum to 1.
+    background : np.ndarray
+        The background base frequencies
+    pseudocount : np.ndarray
+        Pseudocount to be added to the probabilities of the ppm
+        to prevent overflow/underflow.
 
-    Returns:
-            total information content at each positon of the ppm.
+    Returns
+    -------
+        Total information content at each positon of the ppm.
     """
 
     if not np.allclose(np.sum(ppm, axis=1), 1.0, atol=1.0e-5):
@@ -108,17 +128,35 @@ def rolling_window(a, window):
 
 def magnitude(X):
     """
-    Get the norm of the given vector.
+    Center vector at 0 and normalise by the norm.
 
     Parameters
     ----------
+    X : np.ndarray
 
+    Returns
+    -------
+    np.ndarray
+        Normalised vector.
     """
     X = X - np.mean(X)
     return X / (np.linalg.norm(X.ravel()) + 0.0000001)
 
 
 def l1(X):
+    """
+    Normalise given vector by the sum.
+
+    Parameters
+    ----------
+    X : np.ndarray
+
+    Returns
+    -------
+    np.ndarray
+        Normalised vector.
+    """
+
     abs_sum = np.sum(np.abs(X))
     if abs_sum == 0:
         return X
@@ -126,6 +164,25 @@ def l1(X):
 
 
 def get_2d_data_from_patterns(patterns, transformer="l1", include_hypothetical=True):
+    """
+    Compute the norm of the scores vector for the given seqlets.
+
+    Parameters
+    ----------
+    patterns: Seqlet
+        Seqlet for which the norm will be computed.
+    transformer: str, default='l1'
+        Method to use to compute norm. Either 'l1' or 'magnitude' (euclidean norm)
+    include_hypothetical: bool, default=True
+        Wether or not to include hypothetical contributions.
+
+    Returns
+    -------
+    np.ndarray
+        Norms the contribution vector of the given seqlets.
+    np.ndarray
+        Norms the contribution vector of the reverse complement of the given seqlets.
+    """
     func = l1 if transformer == "l1" else magnitude
     tracks = ["hypothetical_contribs", "contrib_scores"]
     if not include_hypothetical:
