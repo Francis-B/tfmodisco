@@ -19,7 +19,6 @@ class TrackSet(object):
         self.one_hot = one_hot
         self.contrib_scores = contrib_scores
         self.hypothetical_contribs = hypothetical_contribs
-        self.length = len(one_hot[0])
 
     def create_seqlets(self, seqlets):
         for seqlet in seqlets:
@@ -38,6 +37,23 @@ class TrackSet(object):
                 seqlet.hypothetical_contribs = self.hypothetical_contribs[idx][s:e]
 
         return seqlets
+
+    def get_track_length(self, example_idx):
+        """
+        Get the length of the track at the given index. This method was added to account
+        for inputs with different lengths.
+
+        Parameters
+        ---------
+        example_idx : int
+            Index of the track for which the length will be returned.
+
+        Returns
+        -------
+        int
+            Length of the track.
+        """
+        return self.one_hot[example_idx].shape[0]
 
 
 class Seqlet(object):
@@ -94,12 +110,19 @@ class Seqlet(object):
         )
 
     def trim(self, start_idx, end_idx):
+        # Correct idx if they go beyond sequence
+        s, e = start_idx, end_idx
+        if e > self.sequence.shape[0]:
+            desired_length = e - s
+            e = self.sequence.shape[0]
+            s = e - desired_length
+
         if self.is_revcomp == False:
-            new_start = self.start + start_idx
-            new_end = self.start + end_idx
+            new_start = self.start + s
+            new_end = self.start + e
         else:
-            new_start = self.end - end_idx
-            new_end = self.end - start_idx
+            new_start = self.end - e
+            new_end = self.end - s
 
         new_seqlet = Seqlet(
             example_idx=self.example_idx,
@@ -108,10 +131,10 @@ class Seqlet(object):
             is_revcomp=self.is_revcomp,
         )
 
-        s, e = start_idx, end_idx
         new_seqlet.sequence = self.sequence[s:e]
         new_seqlet.contrib_scores = self.contrib_scores[s:e]
         new_seqlet.hypothetical_contribs = self.hypothetical_contribs[s:e]
+
         return new_seqlet
 
 
@@ -119,7 +142,7 @@ class SeqletSet:
     def __init__(self, seqlets):
         self.seqlets = []
         self.unique_seqlets = {}
-        self.length = max([len(seqlet) for seqlet in seqlets])
+        self.length = max([len(seqlet.sequence) for seqlet in seqlets])
 
         self._sequence_sum = np.zeros((self.length, 4), dtype="float")
         self._contrib_sum = np.zeros((self.length, 4), dtype="float")
@@ -139,6 +162,17 @@ class SeqletSet:
         self.subcluster_to_subpattern = None
 
     def compute_subpatterns(self, perplexity, n_seeds, n_iterations=-1):
+        """
+        Parameters
+        ----------
+        perplexity : int
+            Perplexity value to pass to the Leiden clustering function.
+        n_seeds : int
+            Random seed.
+        n_iterations : int
+            Number of iteration for the Leiden clustering. Set to -1 to let the
+            leiden function decide of the number of iterations.
+        """
         # this method assumes all the seqlets have been expanded so they
         # all start at 0
         X = util.get_2d_data_from_patterns(self.seqlets)[0]
@@ -213,20 +247,68 @@ class SeqletSet:
         return SeqletSet(seqlets=[seqlet for seqlet in self.seqlets])
 
     def trim_to_support(self, min_frac, min_num):
-        max_support = max(self.per_position_counts)
-        num = min(min_num, max_support * min_frac)
+        """
+        Trim the border of the pattern that are supported by less than provided
+        proportion or number of seqlet. Will use the minimum value between
+        min_frac and min_num.
+
+        Parameters
+        ----------
+        min_frac : float
+            Minimum proportion of supporting seqlets needed to not remove a base.
+        min_num : int
+            Minimum number of supporting seqlets needed to not remove a base.
+
+        Returns
+        -------
+        SeqletSet
+            Trimmed SeqletSet.
+        """
+
+        # If not all position are covered by the same number of seqlet
+        # This happens when then is a really strong motif that center all
+        # seqlet on the same position (e.g. start codon)
+        if len(set(self.per_position_counts)) != 1:
+            values = self.per_position_counts
+            max_support = max(values)
+            num = min(min_num, max_support * min_frac)
+
+        else:
+            values = self.per_position_counts * self.contrib_scores.sum(axis=1)
+            max_support = max(values)
+            num = max_support * min_frac
 
         left_idx = 0
-        while self.per_position_counts[left_idx] < num:
+        while values[left_idx] < num:
             left_idx += 1
+            # Do not remove more than the quarter
+            if left_idx > values.shape[0] / 4:
+                break
 
-        right_idx = len(self.per_position_counts)
-        while self.per_position_counts[right_idx - 1] < num:
+        right_idx = len(values)
+        while values[right_idx - 1] < num:
             right_idx -= 1
+            if right_idx < values.shape[0] - values.shape[0] / 4:
+                break
 
         return self.trim_to_idx(start_idx=left_idx, end_idx=right_idx)
 
     def trim_to_idx(self, start_idx, end_idx):
+        """
+        Trim the seqlet at the given indexes.
+
+        Parameters
+        ----------
+        start_idx : int
+            Index at which the new seqlets will start.
+        end_idx : int
+            Index at which the new seqlets will end.
+
+        Returns
+        -------
+        SeqletSet
+            Trimmed SeqletSet.
+        """
         new_seqlets = []
         for seqlet in self.seqlets:
             new_seqlet = seqlet.trim(start_idx=start_idx, end_idx=end_idx)

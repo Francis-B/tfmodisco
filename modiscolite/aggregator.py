@@ -14,6 +14,32 @@ from sklearn.metrics import roc_auc_score
 
 
 def polish_pattern(pattern, min_frac, min_num, track_set, flank, window_size, bg_freq):
+    """
+    Trim and expand seqlet to get a pattern well supported by corresponding seqlets.
+
+    Parameters
+    ----------
+
+    pattern : SeqletSet
+        SeqletSet used for the given pattern.
+    min_frac : float
+        Minimum proportion of supporting seqlets needed to not remove a base.
+    min_num : int
+        Minimum number of supporting seqlets needed to not remove a base.
+    track_set : TrackSet
+        TrackSet containing the encoded sequences and attribution scores.
+    flank : int
+        Flank size to add to seqlet when expanding.
+    window : int
+        Size of the window used to get the seqlets.
+    bg_freq : np.ndarray
+        Background base frequencies.
+
+    Returns
+    -------
+    SeqletSet
+        New polished SeqletSet.
+    """
     pattern = pattern.trim_to_support(min_frac=min_frac, min_num=min_num)
 
     pattern = _expand_seqlets_to_fill_pattern(
@@ -46,6 +72,26 @@ def polish_pattern(pattern, min_frac, min_num, track_set, flank, window_size, bg
 def _expand_seqlets_to_fill_pattern(
     pattern, track_set, left_flank_to_add, right_flank_to_add
 ):
+    """
+    Expand the seqlet of the given SeqletSet to match the corresponding pattern.
+
+    Parrameters
+    ---------
+    pattern : SeqletSet
+        SeqletSet used fot the given pattern.
+    track_set : TrackSet
+        TrackSet containing the encoded sequence and attribution scores.
+    left_flank_to_add : int
+        Number of base to expand on the left of the seqlet.
+    right_flank_to_add : int
+        Number of base to expand on the right of the seqlet.
+
+    Returns
+    -------
+    SeqletSet or None
+        New SeqletSet containing all the expanded seqlet or None if no seqlet
+        could be correctly expanded.
+    """
     new_seqlets = []
     for seqlet in pattern.seqlets:
         left_expansion = left_flank_to_add
@@ -58,7 +104,8 @@ def _expand_seqlets_to_fill_pattern(
             start = seqlet.start - right_expansion
             end = seqlet.end + left_expansion
 
-        if start >= 0 and end <= track_set.length:
+        length = track_set.get_track_length(seqlet.example_idx)
+        if start >= 0 and end <= length:
             seqlet = track_set.create_seqlets(
                 seqlets=[
                     core.Seqlet(
@@ -137,11 +184,10 @@ def _align_patterns(
             rev_data_child, fwd_data_parent, min_overlap
         ).squeeze()
 
-        rev_is_best = best_crossmetric > best_crossmetric
-        return int(best_crossmetric_argmax_rev), rev_is_best, best_crossmetric_rev
+        if best_crossmetric_rev > best_crossmetric:
+            return int(best_crossmetric_argmax_rev), True, best_crossmetric_rev
 
-    else:
-        return int(best_crossmetric_argmax), False, best_crossmetric
+    return int(best_crossmetric_argmax), False, best_crossmetric
 
 
 def merge_in_seqlets_filledges(
@@ -204,7 +250,8 @@ def merge_in_seqlets_filledges(
             start = seqlet.start - right_expansion
             end = seqlet.end + left_expansion
 
-        if start >= 0 and end <= track_set.length:
+        length = track_set.get_track_length(seqlet.example_idx)
+        if start >= 0 and end <= length:
             seqlet = track_set.create_seqlets(
                 seqlets=[
                     core.Seqlet(
@@ -292,6 +339,27 @@ def _detect_spurious_merging(
     stranded=False,
     verbose=False,
 ):
+    """
+    Parameters
+    ----------
+    patterns : list[SetletSet]
+        List of SeqletSet build by cluster.
+    track_set : TrackSet
+    perplexity : int
+    min_in_subcluster : int
+    min_overlap : float
+    prob_and_pertrack_sim_merge_thresholds :
+    prob_and_pertrack_sim_dealbreaker_thresholds :
+    min_frac : float
+    min_num : int
+    flank_to_add : int
+    window_size : int
+    bg_freq : np.ndarray
+    n_seeds : int
+    max_seqlets_subsample : int, default=1000
+    stranded : bool, default=False
+    verbose : bool, default=False
+    """
     to_return = []
     for i, pattern in enumerate(
         tqdm(
@@ -426,7 +494,8 @@ def SimilarPatternsCollapser(
                 pattern2_coords = [
                     seqlet
                     for seqlet in pattern2_coords
-                    if seqlet.start >= 0 and seqlet.end < track_set.length
+                    if seqlet.start >= 0
+                    and seqlet.end < track_set.get_track_length(seqlet.example_idx)
                 ]
 
                 if len(pattern2_coords) == 0:
