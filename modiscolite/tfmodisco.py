@@ -20,6 +20,18 @@ from . import cluster
 
 
 def _density_adaptation(affmat_nn, seqlet_neighbors, tsne_perplexity):
+    """
+    Correct the given affinity matrix to tend toward the given perplexity.
+
+    Parameters
+    ----------
+    affmat_nn :
+
+    Returns
+    -------
+
+    """
+
     eps = 0.0000001
 
     rows, cols, data = [], [], []
@@ -124,20 +136,37 @@ def _patterns_from_clusters(
     stranded=False,
 ):
     """
-    Create patterns from Seqlets from clusters.
+    Create patterns with Seqlets from clusters.
 
     Parameters
     ----------
     seqlets : list[Seqlet]
+        Seqlets from the given cluster.
     track_set : core.TrackSet
-
+        TrackSet that contains the encoded sequences and the attribution scores.
     min_overlap : int
-        Minimum overlap
-    min_frac :
-
+        Minimum proportion overlapping base between seqlets when building pattern.
+    min_frac : float
+        Minimum proportion of supporting seqlets needed to not remove a base.
+    min_num : int
+        Minimum number of supporting seqlets needed to not remove a base.
+    flank_to_add : int
+        Number of base to add around seqlet when expanding it.
+    window_size : int
+        Size of the window used to get the seqlets.
+    bg_freq : np.ndarray
+        Background base frequencies.
+    cluster_indices : np.array or list
+        Index mapping the given seqlets to their respective cluster.
+    track_sign : int
+        Sign of the current track contribution scores. Either 1 or -1.
+    stranded : bool, default=False
+        Wheter or not the sequence are stranded.
 
     Returns
     -------
+    List[SeqletSet]
+        Polished patterns from the cluster seqlets.
     """
     seqlet_sort_metric = lambda x: -np.sum(np.abs(x.contrib_scores))
     num_clusters = max(cluster_indices + 1)
@@ -181,6 +210,25 @@ def _patterns_from_clusters(
 def _filter_by_correlation(
     seqlets, seqlet_neighbors, coarse_affmat_nn, fine_affmat_nn, correlation_threshold
 ):
+    """
+    Filter out rows of where the correlation between to two given affinity
+    matrixes are below the given threshold.
+
+    Parameters
+    ----------
+    seqlets : Seqlet
+    seqlet_neighbors :
+
+    Returns
+    -------
+    list[Seqlet]
+        Seqlet that has neighbors which affinity correlate between the 2 matrixes.
+    list[int]
+        List of neighbor of the filtered seqlets.
+    list[list[float]]
+        Affinity value from the fine_affmat_nn between seqlets and their
+        corresponding neighbors.
+    """
     correlations = []
     for fine_affmat_row, coarse_affmat_row in zip(fine_affmat_nn, coarse_affmat_nn):
         to_compare_mask = np.abs(fine_affmat_row) > 0
@@ -302,13 +350,13 @@ def seqlets_to_patterns(
                     affmat_correlation_threshold,
                 )
             )
+            logger.info(
+                f"- Removed {len(seqlets) - len(filtered_seqlets)} seqlets due to low correlation"
+            )
         else:
             filtered_seqlets = seqlets
             filtered_affmat_nn = fine_affmat_nn
 
-        logger.info(
-            f"- Round {round_idx}: Removed {len(seqlets) - len(filtered_seqlets)} seqlets due to low correlation"
-        )
         del coarse_affmat_nn
         del fine_affmat_nn
         del seqlets
@@ -646,7 +694,6 @@ def TFMoDISco(
     if (pattern_type in ("both", "pos")) and (len(pos_seqlets) > min_metacluster_size):
         pos_seqlets = pos_seqlets[:max_seqlets_per_metacluster]
         logger.info(f"- Extracting {len(pos_seqlets)} positive seqlets")
-        print("converting seqlets to patterns")
         pos_patterns = seqlets_to_patterns(
             seqlets=pos_seqlets,
             track_set=track_set,

@@ -110,8 +110,8 @@ def _iterative_extract_seqlets(score_track, window, flank, center=True):
             if argmax >= total_flank and argmax <= (length - total_flank):
                 seqlet = core.Seqlet(
                     example_idx=example_idx,
-                    start=argmax - flank - (window // 2),
-                    end=argmax + flank + (window // 2),
+                    start=argmax - total_flank,
+                    end=argmax + total_flank,
                     is_revcomp=False,
                 )
             # Move seqlet window to the right
@@ -119,14 +119,14 @@ def _iterative_extract_seqlets(score_track, window, flank, center=True):
                 seqlet = core.Seqlet(
                     example_idx=example_idx,
                     start=0,
-                    end=1 + total_flank * 2,
+                    end=total_flank * 2,
                     is_revcomp=False,
                 )
             # Move seqlet window to the left
             elif argmax > (length - total_flank):
                 seqlet = core.Seqlet(
                     example_idx=example_idx,
-                    start=length - 1 - total_flank * 2,
+                    start=length - total_flank * 2,
                     end=length,
                     is_revcomp=False,
                 )
