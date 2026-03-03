@@ -93,8 +93,15 @@ class Seqlet(object):
             example_idx=self.example_idx,
             start=self.start,
             end=self.end,
-            is_revcomp=(self.is_revcomp == False),
+            is_revcomp=not self.is_revcomp,
         )
+
+        if self.sequence is None:
+            raise ValueError("Seqlet.sequence was not define yet")
+        if self.contrib_scores is None:
+            raise ValueError("Seqlet.contrib_scores was not define yet")
+        if self.hypothetical_contribs is None:
+            raise ValueError("Seqlet.hypothetical_contribs was not define yet")
 
         new_seqlet.sequence = self.sequence[::-1, ::-1]
         new_seqlet.contrib_scores = self.contrib_scores[::-1, ::-1]
@@ -110,6 +117,14 @@ class Seqlet(object):
         )
 
     def trim(self, start_idx, end_idx):
+
+        if self.sequence is None:
+            raise ValueError("Seqlet.sequence was not define yet")
+        if self.contrib_scores is None:
+            raise ValueError("Seqlet.contrib_scores was not define yet")
+        if self.hypothetical_contribs is None:
+            raise ValueError("Seqlet.hypothetical_contribs was not define yet")
+
         # Correct idx if they go beyond sequence
         s, e = start_idx, end_idx
         if e > self.sequence.shape[0]:
@@ -117,7 +132,7 @@ class Seqlet(object):
             e = self.sequence.shape[0]
             s = e - desired_length
 
-        if self.is_revcomp == False:
+        if not self.is_revcomp:
             new_start = self.start + s
             new_end = self.start + e
         else:
@@ -246,7 +261,7 @@ class SeqletSet:
     def copy(self):
         return SeqletSet(seqlets=[seqlet for seqlet in self.seqlets])
 
-    def trim_to_support(self, min_frac, min_num):
+    def trim_to_support(self, min_frac, min_num, min_length):
         """
         Trim the border of the pattern that are supported by less than provided
         proportion or number of seqlet. Will use the minimum value between
@@ -258,6 +273,8 @@ class SeqletSet:
             Minimum proportion of supporting seqlets needed to not remove a base.
         min_num : int
             Minimum number of supporting seqlets needed to not remove a base.
+        min_length : int
+            Minimum length to trim to.
 
         Returns
         -------
@@ -279,17 +296,17 @@ class SeqletSet:
             num = max_support * min_frac
 
         left_idx = 0
-        while values[left_idx] < num:
-            left_idx += 1
-            # Do not remove more than the quarter
-            if left_idx > values.shape[0] / 4:
-                break
+        right_idx = len(values) - 1
 
-        right_idx = len(values)
-        while values[right_idx - 1] < num:
-            right_idx -= 1
-            if right_idx < values.shape[0] - values.shape[0] / 4:
+        # Trim the border of the seqlet until we get the minimum length or the
+        # minimal number of support.
+        while right_idx - left_idx > min_length:
+            if values[right_idx] >= num and values[left_idx] >= num:
                 break
+            if values[right_idx] < values[left_idx]:
+                right_idx -= 1
+            else:
+                left_idx += 1
 
         return self.trim_to_idx(start_idx=left_idx, end_idx=right_idx)
 

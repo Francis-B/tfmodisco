@@ -172,7 +172,7 @@ def get_2d_data_from_patterns(patterns, transformer="l1", include_hypothetical=T
     patterns: Seqlet
         Seqlet for which the norm will be computed.
     transformer: str, default='l1'
-        Method to use to compute norm. Either 'l1' or 'magnitude' (euclidean norm)
+        Method to used to compute norm. Either 'l1' or 'magnitude' (euclidean norm)
     include_hypothetical: bool, default=True
         Wether or not to include hypothetical contributions.
 

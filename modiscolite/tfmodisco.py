@@ -25,10 +25,15 @@ def _density_adaptation(affmat_nn, seqlet_neighbors, tsne_perplexity):
 
     Parameters
     ----------
-    affmat_nn :
+    affmat_nn : np.ndarray
+        Affinity matrix
+    seqlet_neighbors :
+    tsn_perplexity : int
 
     Returns
     -------
+    scipy.sparce.csr_matrix
+        New affinity matrix.
 
     """
 
