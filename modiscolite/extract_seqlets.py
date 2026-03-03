@@ -81,7 +81,7 @@ def _laplacian_null(track, window_size, num_to_samp, random_seed=1234):
     return sampled_vals[sampled_vals >= 0], sampled_vals[sampled_vals < 0]
 
 
-def _iterative_extract_seqlets(score_track, window, flank, center=True):
+def _iterative_extract_seqlets(score_track, window, flank):
     """
     Extract all seqlet window with significant contribution scores from given
     contribution score array
@@ -258,7 +258,6 @@ def extract_seqlets(
     attribution_scores,
     window_size,
     flank,
-    suppress,
     target_fdr,
     min_passing_windows_frac,
     max_passing_windows_frac,

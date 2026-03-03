@@ -30,7 +30,7 @@ def polish_pattern(pattern, min_frac, min_num, track_set, flank, window_size, bg
         TrackSet containing the encoded sequences and attribution scores.
     flank : int
         Flank size to add to seqlet when expanding.
-    window : int
+    window_size : int
         Size of the window used to get the seqlets.
     bg_freq : np.ndarray
         Background base frequencies.
@@ -40,7 +40,9 @@ def polish_pattern(pattern, min_frac, min_num, track_set, flank, window_size, bg
     SeqletSet
         New polished SeqletSet.
     """
-    pattern = pattern.trim_to_support(min_frac=min_frac, min_num=min_num)
+    pattern = pattern.trim_to_support(
+        min_frac=min_frac, min_num=min_num, min_length=window_size + 1
+    )
 
     pattern = _expand_seqlets_to_fill_pattern(
         pattern, track_set=track_set, left_flank_to_add=flank, right_flank_to_add=flank
@@ -73,7 +75,8 @@ def _expand_seqlets_to_fill_pattern(
     pattern, track_set, left_flank_to_add, right_flank_to_add
 ):
     """
-    Expand the seqlet of the given SeqletSet to match the corresponding pattern.
+    Expand the seqlet of the given SeqletSet to match the corresponding pattern. The seqlet
+    with track not long enough to be expanded will be removed from SeqletSet.
 
     Parrameters
     ---------
@@ -104,8 +107,9 @@ def _expand_seqlets_to_fill_pattern(
             start = seqlet.start - right_expansion
             end = seqlet.end + left_expansion
 
-        length = track_set.get_track_length(seqlet.example_idx)
-        if start >= 0 and end <= length:
+        # Make sure the track is long enough for the expanded seqlet
+        track_length = track_set.get_track_length(seqlet.example_idx)
+        if start > 0 and end < track_length:
             seqlet = track_set.create_seqlets(
                 seqlets=[
                     core.Seqlet(
@@ -243,7 +247,7 @@ def merge_in_seqlets_filledges(
         left_expansion = max(alnmt, 0)
         right_expansion = max((len(parent_pattern) - (alnmt + len(seqlet))), 0)
 
-        if seqlet.is_revcomp == False:
+        if not seqlet.is_revcomp:
             start = seqlet.start - left_expansion
             end = seqlet.end + right_expansion
         else:
