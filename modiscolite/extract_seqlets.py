@@ -239,19 +239,20 @@ def _refine_thresholds(
     min_passing_windows_frac,
     max_passing_windows_frac,
 ):
+    # Save sign of the values
+    sign = np.sign(vals.sum())
+
+    vals = np.abs(vals)
+    threshold = np.abs(threshold)
     frac_passing_windows = sum(vals >= threshold) / float(len(vals))
 
     if frac_passing_windows < min_passing_windows_frac:
-        threshold = np.percentile(
-            a=np.abs(vals), q=100 * (1 - min_passing_windows_frac)
-        )
+        threshold = np.percentile(a=vals, q=100 * (1 - min_passing_windows_frac))
 
     if frac_passing_windows > max_passing_windows_frac:
-        threshold = np.percentile(
-            a=np.abs(vals), q=100 * (1 - max_passing_windows_frac)
-        )
+        threshold = np.percentile(a=vals, q=100 * (1 - max_passing_windows_frac))
 
-    return threshold
+    return threshold * sign
 
 
 def extract_seqlets(
@@ -340,7 +341,7 @@ def extract_seqlets(
 
     logger.info("- Extracting seqlets")
     seqlets = _iterative_extract_seqlets(
-        score_track=attribution_scores,  # TODO: set back to smoothed_track if not working
+        score_track=smoothed_tracks,  # TODO: set back to smoothed_track if not working
         window=window_size,
         flank=flank,
     )
