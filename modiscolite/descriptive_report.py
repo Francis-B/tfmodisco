@@ -100,6 +100,8 @@ def extract_seqlet_data(modisco_h5py: str, pattern_groups: List[str]) -> Dict:
                 seqlets_grp = pattern["seqlets"]
                 n_seqlets = seqlets_grp["n_seqlets"][:][0]
 
+                entropy_scores = np.array(seqlets_grp["entropy_scores"][:])
+
                 # Get seqlet positions and data if available
                 seqlet_starts = seqlets_grp.get("start", [])
                 seqlet_ends = seqlets_grp.get("end", [])
@@ -118,6 +120,8 @@ def extract_seqlet_data(modisco_h5py: str, pattern_groups: List[str]) -> Dict:
                 # Calculate pattern statistics
                 gc_content = np.mean(ppm[:, [1, 2]])  # C and G positions
                 avg_importance = np.mean(np.sum(cwm, axis=1))
+                avg_entropy = np.mean(entropy_scores)
+                std_entropy = np.std(entropy_scores)
 
                 # Calculate standard deviations for seqlet statistics
                 std_importance = np.nan
@@ -143,6 +147,8 @@ def extract_seqlet_data(modisco_h5py: str, pattern_groups: List[str]) -> Dict:
                     "gc_content": gc_content,
                     "avg_importance": avg_importance,
                     "std_importance": std_importance,
+                    "avg_entropy": avg_entropy,
+                    "std_entropy": std_entropy,
                     "median_abs_distance_from_center": median_abs_distance_from_center,
                     "std_distance_from_center": np.nan,  # Will be computed globally
                     "seqlet_starts": seqlet_starts_list,

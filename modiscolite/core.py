@@ -6,6 +6,7 @@ import pickle
 
 import numpy as np
 import scipy.sparse
+from scipy.stats import entropy
 
 from . import affinitymat
 from . import cluster
@@ -152,6 +153,19 @@ class Seqlet(object):
 
         return new_seqlet
 
+    def get_entropy(self):
+        """
+                Compute the entropy of the seqlet sequence.
+        Returns
+                -------
+                float
+                    Entropy of the sequence.
+        """
+        if self.sequence is None:
+            raise TypeError("No sequence were defined")
+
+        return entropy(self.sequence.sum(axis=0))
+
 
 class SeqletSet:
     def __init__(self, seqlets):
@@ -193,7 +207,6 @@ class SeqletSet:
         X = util.get_2d_data_from_patterns(self.seqlets)[0]
         X = X.reshape(len(X), -1)
 
-        n = len(X)
         n_neighb = min(int(perplexity * 3 + 2), len(X))
 
         affmat_nn, seqlet_neighbors = affinitymat.pairwise_jaccard(X, n_neighb)
@@ -209,7 +222,7 @@ class SeqletSet:
                         [
                             i
                             for i in range(len(seqlet_neighbors))
-                            for j in seqlet_neighbors[i]
+                            for j in seqlet_neighbors[i]  # type: ignore
                         ]
                     ).astype("int"),
                     np.concatenate(seqlet_neighbors, axis=0),
@@ -239,7 +252,7 @@ class SeqletSet:
         # this method assumes all the seqlets have been expanded so they
         # all start at 0
         subcluster_to_seqletsandalignments = OrderedDict()
-        for seqlet, subcluster in zip(self.seqlets, self.subclusters):
+        for seqlet, subcluster in zip(self.seqlets, self.subclusters):  # type: ignore
             if subcluster not in subcluster_to_seqletsandalignments:
                 subcluster_to_seqletsandalignments[subcluster] = []
 
@@ -260,6 +273,17 @@ class SeqletSet:
 
     def copy(self):
         return SeqletSet(seqlets=[seqlet for seqlet in self.seqlets])
+
+    def get_seqlets_entropy(self):
+        """
+        Compute the entropy for all the seqlet.
+
+        Returns
+        ------
+        list[float]
+            Entropy of all seqlets stored in self.
+        """
+        return [seqlet.get_entropy() for seqlet in self.seqlets]
 
     def trim_to_support(self, min_frac, min_num, min_length):
         """

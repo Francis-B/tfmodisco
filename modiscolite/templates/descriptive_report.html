@@ -472,7 +472,6 @@
                     <th>Avg. Contribution</th>
                     <th>Med. Center Dist.</th>
                     <th>CWM Fwd</th>
-                    <th>CWM Rev</th>
                     {% if meme_motif_db %}
                     <th>Match 0</th>
                     <th>Q-value</th>
@@ -523,11 +522,6 @@
                     <td class="logo-cell">
                         {% if pattern_tag in logo_paths %}
                         <img src="{{ logo_paths[pattern_tag]['trimmed_cwm_fwd'] }}" alt="CWM Fwd">
-                        {% endif %}
-                    </td>
-                    <td class="logo-cell">
-                        {% if pattern_tag in logo_paths %}
-                        <img src="{{ logo_paths[pattern_tag]['trimmed_cwm_rev'] }}" alt="CWM Rev">
                         {% endif %}
                     </td>
                     {% if meme_motif_db %}
@@ -622,6 +616,11 @@
                             -
                         {% endif %}
                     </td>
+                </tr>
+                <tr>
+                  <td>Average entropy</td>
+                  <td class="num_col">{{ "%.3f"|format(data.avg_entropy) }}</td>
+                  <td class="num_col">{{ "%.3f"|format(data.std_entropy) }}</td>
                 </tr>
                 {% endif %}
             </tbody>
