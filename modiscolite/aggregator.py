@@ -109,6 +109,9 @@ def _expand_seqlets_to_fill_pattern(
 
         # Make sure the track is long enough for the expanded seqlet
         track_length = track_set.get_track_length(seqlet.example_idx)
+        no_padding_length = track_set.get_track_length(
+            seqlet.example_idx, include_padding=False
+        )
         if start > 0 and end < track_length:
             seqlet = track_set.create_seqlets(
                 seqlets=[
@@ -117,6 +120,7 @@ def _expand_seqlets_to_fill_pattern(
                         start=start,
                         end=end,
                         is_revcomp=seqlet.is_revcomp,
+                        track_length=no_padding_length,
                     )
                 ]
             )[0]
@@ -255,6 +259,9 @@ def merge_in_seqlets_filledges(
             end = seqlet.end + left_expansion
 
         length = track_set.get_track_length(seqlet.example_idx)
+        no_padding_length = track_set.get_track_length(
+            seqlet.example_idx, include_padding=False
+        )
         if start >= 0 and end <= length:
             seqlet = track_set.create_seqlets(
                 seqlets=[
@@ -263,6 +270,7 @@ def merge_in_seqlets_filledges(
                         start=start,
                         end=end,
                         is_revcomp=seqlet.is_revcomp,
+                        track_length=no_padding_length,
                     )
                 ]
             )[0]
