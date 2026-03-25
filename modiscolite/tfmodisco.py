@@ -673,6 +673,7 @@ def TFMoDISco(
         attribution_scores=summed_scores,
         window_size=sliding_window_size,
         flank=flank_size,
+        track_set=track_set,
         target_fdr=target_seqlet_fdr,
         min_passing_windows_frac=min_passing_windows_frac,
         max_passing_windows_frac=max_passing_windows_frac,

@@ -105,6 +105,7 @@ def extract_seqlet_data(modisco_h5py: str, pattern_groups: List[str]) -> Dict:
                 # Get seqlet positions and data if available
                 seqlet_starts = seqlets_grp.get("start", [])
                 seqlet_ends = seqlets_grp.get("end", [])
+                track_lengths = seqlets_grp.get("track_lengths")
                 seqlet_example_idx = seqlets_grp.get("example_idx", [])
 
                 # Get seqlet contribution scores and calculate importance
@@ -135,10 +136,12 @@ def extract_seqlet_data(modisco_h5py: str, pattern_groups: List[str]) -> Dict:
                 seqlet_ends_list = (
                     np.array(seqlet_ends) if len(seqlet_ends) > 0 else np.array([])
                 )
+                track_lengths_list = (
+                    np.array(track_lengths) if len(track_lengths) > 0 else np.array([])
+                )
 
-                # Calculate median absolute distance from center (will be computed globally later)
-                median_abs_distance_from_center = np.nan
-
+                # Distance are being attributed np.nan values as placeholder.
+                # Real values will be computed globablly later
                 patterns_data[pattern_tag] = {
                     "ppm": ppm,
                     "cwm": cwm,
@@ -149,10 +152,15 @@ def extract_seqlet_data(modisco_h5py: str, pattern_groups: List[str]) -> Dict:
                     "std_importance": std_importance,
                     "avg_entropy": avg_entropy,
                     "std_entropy": std_entropy,
-                    "median_abs_distance_from_center": median_abs_distance_from_center,
-                    "std_distance_from_center": np.nan,  # Will be computed globally
+                    "median_abs_distance_from_center": np.nan,
+                    "std_distance_from_center": np.nan,
+                    "median_distance_from_start": np.nan,
+                    "std_distance_from_start": np.nan,
+                    "median_distance_from_end": np.nan,
+                    "std_distance_from_end": np.nan,
                     "seqlet_starts": seqlet_starts_list,
                     "seqlet_ends": seqlet_ends_list,
+                    "track_lengths": track_lengths_list,
                     "seqlet_example_idx": np.array(seqlet_example_idx)
                     if len(seqlet_example_idx) > 0
                     else np.array([]),
@@ -204,6 +212,54 @@ def compute_global_region_size_and_distances(patterns_data: Dict) -> Dict:
         else:
             data["median_abs_distance_from_center"] = np.nan
             data["std_distance_from_center"] = np.nan
+
+    return updated_patterns_data
+
+
+def compute_distances(patterns_data: Dict) -> Dict:
+    """
+    Compute the spatial distribution data. This function is meant to replace the
+    `compute_globa_region_size_and_distances` function to implement the spatial
+    distribution from start and from end, and to compute the distance from center
+    with the local center rather than the global one.
+    """
+    # Find the longest track sequence
+    max_length = max([max(data["track_lengths"]) for data in patterns_data.values()])
+
+    # Update patterns data with global information and compute distances from center
+    updated_patterns_data = patterns_data.copy()
+    for pattern_tag, data in updated_patterns_data.items():
+        data["max_length"] = max_length
+
+        # Compute median absolute distance from global center and standard deviation
+        if len(data["seqlet_starts"]) > 0 and len(data["seqlet_ends"]) > 0:
+            # Calculate seqlet center positions
+            seqlet_centers = (data["seqlet_starts"] + data["seqlet_ends"]) / 2
+            track_centers = data["track_lengths"] / 2
+
+            # Calculate distances from local center
+            distances_from_center = np.abs(seqlet_centers - track_centers)
+            data["median_abs_distance_from_center"] = np.median(distances_from_center)
+            data["std_distance_from_center"] = np.std(distances_from_center)
+
+            # Calculate distance from start
+            data["median_distance_from_start"] = np.median(data["seqlet_starts"])
+            data["std_distance_from_start"] = np.std(data["seqlet_starts"])
+
+            # Calculate distances from end
+            distances_from_end = data["seqlet_ends"] - data["track_lengths"]
+            if max(distances_from_end) > 0:
+                raise ValueError("At least positive distance from end was observed")
+            data["median_distance_from_end"] = np.median(distances_from_end)
+            data["std_distance_from_end"] = np.std(distances_from_end)
+
+        else:
+            data["median_abs_distance_from_center"] = np.nan
+            data["std_distance_from_center"] = np.nan
+            data["median_distance_from_start"] = np.nan
+            data["std_distance_from_start"] = np.nan
+            data["median_distance_from_end"] = np.nan
+            data["std_distance_from_end"] = np.nan
 
     return updated_patterns_data
 
@@ -318,28 +374,48 @@ def create_distribution_plots(patterns_data: Dict, output_dir: str) -> Dict:
 
         # Seqlet spatial distribution
         if len(data["seqlet_starts"]) > 0:
-            # Calculate center positions
-            centers = (data["seqlet_starts"] + data["seqlet_ends"]) / 2
+            # Calculate seqlet center positions
+            seqlet_centers = (data["seqlet_starts"] + data["seqlet_ends"]) / 2
+            track_centers = data["track_lengths"] / 2
+
+            # Adjust centers to be relative to global center (center at 0)
+            relative_to_center = seqlet_centers - track_centers
 
             # Set bounds based on global region size with center at 0
-            if "global_region_size" in data:
-                half_size = data["global_region_size"] / 2
-                xlim = (-half_size, half_size)
-                # Adjust centers to be relative to global center (center at 0)
-                centers_adjusted = centers - data["global_center"]
-            else:
-                xlim = None
-                centers_adjusted = centers
+            xlim = (-max(relative_to_center), max(relative_to_center))
 
-            plots["spatial"] = plot_histogram_to_base64(
-                centers_adjusted,
+            plots["from_center_spatial"] = plot_histogram_to_base64(
+                relative_to_center,
                 bins=30,
                 color="lightcoral",
-                xlabel="Position Relative to Center (bp)",
+                xlabel="Position Relative to Region Center (bp)",
                 ylabel="Density",
                 title=f"Seqlet Spatial Distribution - {pattern_tag}",
                 figsize=(8, 4),
                 xlim=xlim,
+            )
+
+            plots["from_start_spatial"] = plot_histogram_to_base64(
+                data["seqlet_starts"],
+                bins=30,
+                color="lightcoral",
+                xlabel="Position Relative To Region Start (bp)",
+                ylabel="Density",
+                title=f"Seqlet Spatial Distribution - {pattern_tag}",
+                figsize=(8, 4),
+                xlim=(0, max(data["seqlet_starts"])),
+            )
+
+            relative_to_ends = data["seqlet_ends"] - data["track_lengths"]
+            plots["from_start_end"] = plot_histogram_to_base64(
+                relative_to_ends,
+                bins=30,
+                color="lightcoral",
+                xlabel="Position Relative To Region End (bp)",
+                ylabel="Density",
+                title=f"Seqlet Spatial Distribution - {pattern_tag}",
+                figsize=(8, 4),
+                xlim=(min(relative_to_ends), 0),
             )
 
         distribution_data[pattern_tag] = plots
@@ -511,7 +587,7 @@ def generate_descriptive_report(
     patterns_data = extract_seqlet_data(modisco_h5py, pattern_groups)
 
     # Compute global region size and update distances
-    patterns_data = compute_global_region_size_and_distances(patterns_data)
+    patterns_data = compute_distances(patterns_data)
 
     # Create visualizations
     logo_paths = create_logos(patterns_data, output_dir, trim_threshold)
@@ -596,4 +672,3 @@ def generate_descriptive_report(
 
     print(f"Report generated: {report_path}")
     return report_path
-

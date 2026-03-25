@@ -39,7 +39,7 @@ class TrackSet(object):
 
         return seqlets
 
-    def get_track_length(self, example_idx):
+    def get_track_length(self, example_idx, include_padding=True):
         """
         Get the length of the track at the given index. This method was added to account
         for inputs with different lengths.
@@ -54,15 +54,30 @@ class TrackSet(object):
         int
             Length of the track.
         """
-        return self.one_hot[example_idx].shape[0]
+        if include_padding:
+            return self.one_hot[example_idx].shape[0]
+        else:
+            nonzero = self.one_hot[example_idx].sum(axis=1).nonzero()[0]
+            start = nonzero[0]
+            end = nonzero[-1]
+            length = end - start
+            if np.isnan(length):
+                raise ValueError(
+                    f"Invalid length obtained with {start} (start) and {end} (end)"
+                )
+            return end - start
 
 
 class Seqlet(object):
-    def __init__(self, example_idx, start, end, is_revcomp):
+    def __init__(
+        self, example_idx, start, end, is_revcomp, track_length, track_frame=None
+    ):
         self.example_idx = example_idx
         self.start = start
         self.end = end
         self.is_revcomp = is_revcomp
+        self.track_length = track_length
+        self.track_frame = track_frame
 
         self.sequence = None
         self.contrib_scores = None
@@ -95,6 +110,7 @@ class Seqlet(object):
             start=self.start,
             end=self.end,
             is_revcomp=not self.is_revcomp,
+            track_length=self.track_length,
         )
 
         if self.sequence is None:
@@ -109,16 +125,29 @@ class Seqlet(object):
         new_seqlet.hypothetical_contribs = self.hypothetical_contribs[::-1, ::-1]
         return new_seqlet
 
+    def get_loc_in_frame(self):
+        """
+        Get the localisation of the highest scoring nucleotide in the same reading
+        frame has the annotated CDS.
+
+        Returns
+        -------
+        int
+            Reading frame. Either 0, 1 or 2 (0 meaning that the nucleotide is the
+            first of a codon in the reading frame of the annotated CDS).
+        """
+        pass
+
     def shift(self, shift_amt):
         return Seqlet(
             example_idx=self.example_idx,
             start=self.start + shift_amt,
             end=self.end + shift_amt,
             is_revcomp=self.is_revcomp,
+            track_length=self.track_length,
         )
 
     def trim(self, start_idx, end_idx):
-
         if self.sequence is None:
             raise ValueError("Seqlet.sequence was not define yet")
         if self.contrib_scores is None:
@@ -145,6 +174,7 @@ class Seqlet(object):
             start=new_start,
             end=new_end,
             is_revcomp=self.is_revcomp,
+            track_length=self.track_length,
         )
 
         new_seqlet.sequence = self.sequence[s:e]
@@ -155,11 +185,12 @@ class Seqlet(object):
 
     def get_entropy(self):
         """
-                Compute the entropy of the seqlet sequence.
+        Compute the entropy of the seqlet sequence.
+
         Returns
-                -------
-                float
-                    Entropy of the sequence.
+        -------
+        float
+            Entropy of the sequence.
         """
         if self.sequence is None:
             raise TypeError("No sequence were defined")
@@ -284,6 +315,28 @@ class SeqletSet:
             Entropy of all seqlets stored in self.
         """
         return [seqlet.get_entropy() for seqlet in self.seqlets]
+
+    def get_track_length(self):
+        """
+        Get the track length from which the seqlet were extracted.
+
+        Returns
+        ------
+        list[int]
+            Length of the seqlets respective track.
+        """
+
+        track_lengths = [seqlet.track_length for seqlet in self.seqlets]
+        if any(~np.isnan(track_lengths)):
+            raise ValueError("Some seqlets has no length defined.")
+
+        return track_lengths
+
+    def get_seqlet_frames(self):
+        """
+        Get the frame in which is the highest contributing nucleotides of each seqlet.
+        """
+        return [seqlet.get_frame() for seqlet in self.seqlets()]
 
     def trim_to_support(self, min_frac, min_num, min_length):
         """

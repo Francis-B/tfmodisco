@@ -618,6 +618,28 @@
                     </td>
                 </tr>
                 <tr>
+                    <td>Median distance from start</td>
+                    <td class="num_col">{{ "%.1f"|format(data.median_distance_from_start) }}</td>
+                    <td class="num_col">
+                        {% if data.std_distance_from_start %}
+                            {{ "%.1f"|format(data.std_distance_from_start) }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td>Median distance from end</td>
+                    <td class="num_col">{{ "%.1f"|format(data.median_distance_from_end) }}</td>
+                    <td class="num_col">
+                        {% if data.std_distance_from_end %}
+                            {{ "%.1f"|format(data.std_distance_from_end) }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
                   <td>Average entropy</td>
                   <td class="num_col">{{ "%.3f"|format(data.avg_entropy) }}</td>
                   <td class="num_col">{{ "%.3f"|format(data.std_entropy) }}</td>
@@ -663,6 +685,8 @@
         {% if pattern_tag in distribution_paths %}
         <h4>Seqlet Distributions</h4>
         <div class="distribution-plots">
+
+          <!-- Seqlet contribution score distribution -->
             {% if 'importance' in distribution_paths[pattern_tag] %}
             <div class="distribution-item">
                 <h5>Seqlet Contribution Score Distribution</h5>
@@ -670,13 +694,52 @@
                 <img src="{{ distribution_paths[pattern_tag]['importance'] }}" alt="Contribution Score Distribution">
             </div>
             {% endif %}
-            {% if 'spatial' in distribution_paths[pattern_tag] %}
+
+            <!-- Seqlet spatial distribution from center -->
+            {% if 'from_center_spatial' in distribution_paths[pattern_tag] %}
             <div class="distribution-item">
-                <h5>Seqlet Spatial Distribution</h5>
+                <h5>Seqlet Spatial Distribution From Center</h5>
                 <p><em>Distribution of seqlet positions within input sequences</em></p>
-                <img src="{{ distribution_paths[pattern_tag]['spatial'] }}" alt="Spatial Distribution">
+                <img src="{{ distribution_paths[pattern_tag]['from_center_spatial'] }}" alt="Spatial From Center">
             </div>
             {% endif %}
+
+            <!-- Seqlet spatial distribution (5' -> 3') -->
+            {% if 'from_start_spatial' in distribution_paths[pattern_tag] %}
+            <div class="distribution-item">
+                <h5>Seqlet Spatial Distribution (5' -> 3')</h5>
+                <p><em>Distribution of seqlet positions within input sequences</em></p>
+                <img src="{{ distribution_paths[pattern_tag]['from_start_spatial'] }}" alt="Spatial From Start">
+            </div>
+            {% endif %}
+
+            <!-- Seqlet spatial distribution (3' -> 5') -->
+            {% if 'from_end_spatial' in distribution_paths[pattern_tag] %}
+            <div class="distribution-item">
+                <h5>Seqlet Spatial Distribution (3' -> 5')</h5>
+                <p><em>Distribution of seqlet positions within input sequences</em></p>
+                <img src="{{ distribution_paths[pattern_tag]['from_end_spatial'] }}" alt="Spatial From End">
+            </div>
+            {% endif %}
+
+          <!-- Frame proportion of the highest contributing nucleotides of the seqlets -->
+            {% if 'frames_proportion' in distribution_paths[pattern_tag] %}
+            <div class="distribution-item">
+                <h5>Frame of the Highest Scoring Nucleotide of the Seqlets</h5>
+                <p><em>Distribution of seqlet positions within input sequences</em></p>
+                <img src="{{ distribution_paths[pattern_tag]['frames_proportions'] }}" alt="Frames proportion">
+            </div>
+            {% endif %}
+
+          <!-- Entropy of the Seqlet-->
+            {% if 'entropy_scores' in distribution_paths[pattern_tag] %}
+            <div class="distribution-item">
+                <h5>Entropy Scores</h5>
+                <p><em>Distribution of seqlet positions within input sequences</em></p>
+                <img src="{{ distribution_paths[pattern_tag]['entropy_scores'] }}" alt="Frames proportion">
+            </div>
+            {% endif %}
+
         </div>
         {% endif %}
 

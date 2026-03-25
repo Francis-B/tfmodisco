@@ -81,7 +81,7 @@ def _laplacian_null(track, window_size, num_to_samp, random_seed=1234):
     return sampled_vals[sampled_vals >= 0], sampled_vals[sampled_vals < 0]
 
 
-def _iterative_extract_seqlets(score_track, window, flank):
+def _iterative_extract_seqlets(score_track, track_set, window, flank):
     """
     Extract all seqlet window with significant contribution scores from given
     contribution score array
@@ -92,7 +92,13 @@ def _iterative_extract_seqlets(score_track, window, flank):
 
     seqlets = []
     for example_idx, single_score_track in enumerate(score_track):
+        # Total track length
         length = len(single_score_track)
+
+        no_padding_length = track_set.get_track_length(
+            example_idx, include_padding=False
+        )
+
         while True:
             if len(single_score_track) <= total_flank + 1:
                 break
@@ -113,6 +119,7 @@ def _iterative_extract_seqlets(score_track, window, flank):
                     start=argmax - total_flank,
                     end=argmax + total_flank,
                     is_revcomp=False,
+                    track_length=no_padding_length,
                 )
             # Move seqlet window to the right
             elif argmax < total_flank:
@@ -121,6 +128,7 @@ def _iterative_extract_seqlets(score_track, window, flank):
                     start=0,
                     end=total_flank * 2,
                     is_revcomp=False,
+                    track_length=no_padding_length,
                 )
             # Move seqlet window to the left
             elif argmax > (length - total_flank):
@@ -129,6 +137,7 @@ def _iterative_extract_seqlets(score_track, window, flank):
                     start=length - total_flank * 2,
                     end=length,
                     is_revcomp=False,
+                    track_length=no_padding_length,
                 )
             else:
                 print("total_flank:", total_flank)
@@ -259,6 +268,7 @@ def extract_seqlets(
     attribution_scores,
     window_size,
     flank,
+    track_set,
     target_fdr,
     min_passing_windows_frac,
     max_passing_windows_frac,
@@ -341,7 +351,8 @@ def extract_seqlets(
 
     logger.info("- Extracting seqlets")
     seqlets = _iterative_extract_seqlets(
-        score_track=smoothed_tracks,  # TODO: set back to smoothed_track if not working
+        score_track=smoothed_tracks,
+        track_set=track_set,
         window=window_size,
         flank=flank,
     )

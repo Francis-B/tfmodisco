@@ -191,7 +191,6 @@ def convert(old_filename, filename):
 
 
 def save_pattern(pattern, grp):
-
     grp.create_dataset("sequence", data=pattern.sequence)
     grp.create_dataset("contrib_scores", data=pattern.contrib_scores)
     grp.create_dataset("hypothetical_contribs", data=pattern.hypothetical_contribs)
@@ -203,6 +202,10 @@ def save_pattern(pattern, grp):
     )
     seqlet_grp.create_dataset(
         "end", data=np.array([seqlet.end for seqlet in pattern.seqlets])
+    )
+    seqlet_grp.create_dataset(
+        "track_lengths",
+        data=np.array(pattern.get_track_length()),
     )
     seqlet_grp.create_dataset(
         "example_idx", data=np.array([seqlet.example_idx for seqlet in pattern.seqlets])
@@ -225,6 +228,10 @@ def save_pattern(pattern, grp):
     seqlet_grp.create_dataset(
         "entropy_scores",
         data=np.array(pattern.get_seqlets_entropy()),
+    )
+    seqlet_grp.create_dataset(
+        "frames",
+        data=np.array(pattern.get_seqlets_frame()),
     )
 
     if pattern.subclusters is not None:
