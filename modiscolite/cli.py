@@ -32,21 +32,21 @@ def cli() -> None:
 @click.option(
     "-s",
     "--sequences",
-    'seq_path',
+    "seq_path",
     type=click.Path(exists=True),
     help="A .npy or .npz file containing the one-hot encoded sequences.",
 )
 @click.option(
     "-a",
     "--attributions",
-    'attr_path',
+    "attr_path",
     type=click.Path(exists=True),
-    help="A .npy or .npz file containing the hypothetical attributions, i.e., the attributions for all nucleotides at all positions."
+    help="A .npy or .npz file containing the hypothetical attributions, i.e., the attributions for all nucleotides at all positions.",
 )
 @click.option(
     "-i",
     "--h5py",
-    'h5_path',
+    "h5_path",
     type=click.Path(exists=True),
     help="Legacy HDF5 file that stores both sequences and attribution scores.",
 )
@@ -55,7 +55,7 @@ def cli() -> None:
     "--max-seqlets",
     type=int,
     required=True,
-    help="The maximum number of seqlets per metacluster."
+    help="The maximum number of seqlets per metacluster.",
 )
 @click.option(
     "-l",
@@ -63,7 +63,7 @@ def cli() -> None:
     type=int,
     default=50,
     show_default=True,
-    help="The number of Leiden clusterings to perform with different random seeds."
+    help="The number of Leiden clusterings to perform with different random seeds.",
 )
 @click.option(
     "-w",
@@ -71,7 +71,7 @@ def cli() -> None:
     type=int,
     default=400,
     show_default=True,
-    help="The window surrounding the peak center that will be considered for motif discovery."
+    help="The window surrounding the peak center that will be considered for motif discovery.",
 )
 @click.option(
     "-z",
@@ -80,7 +80,7 @@ def cli() -> None:
     type=int,
     default=20,
     show_default=True,
-    help="The size of the seqlet cores, corresponding to `sliding_window_size`."
+    help="The size of the seqlet cores, corresponding to `sliding_window_size`.",
 )
 @click.option(
     "-t",
@@ -88,7 +88,7 @@ def cli() -> None:
     type=int,
     default=30,
     show_default=True,
-    help="The size to trim to, corresponding to `trim_to_window_size`."
+    help="The size to trim to, corresponding to `trim_to_window_size`.",
 )
 @click.option(
     "-f",
@@ -96,7 +96,7 @@ def cli() -> None:
     type=int,
     default=5,
     show_default=True,
-    help="The size of the flanks to add to each seqlet, corresponding to `flank_size`."
+    help="The size of the flanks to add to each seqlet, corresponding to `flank_size`.",
 )
 @click.option(
     "-g",
@@ -104,7 +104,7 @@ def cli() -> None:
     type=int,
     default=10,
     show_default=True,
-    help="The size of the flanks to add to each pattern initially, corresponding to `initial_flank_to_add`."
+    help="The size of the flanks to add to each pattern initially, corresponding to `initial_flank_to_add`.",
 )
 @click.option(
     "-j",
@@ -112,7 +112,7 @@ def cli() -> None:
     type=int,
     default=0,
     show_default=True,
-    help="The size of the flanks to add to each pattern at the end, corresponding to `final_flank_to_add`."
+    help="The size of the flanks to add to each pattern at the end, corresponding to `final_flank_to_add`.",
 )
 @click.option(
     "-o",
@@ -293,7 +293,7 @@ def report_simple(
         top_n_matches=n_matches,
         ttl=lite,
         num_cores=num_cores,
-        verbose=verbose
+        verbose=verbose,
     )
 
 
@@ -362,15 +362,16 @@ def report(
 ):
     """Create a comprehensive descriptive HTML report of the results."""
     modiscolite.descriptive_report.generate_descriptive_report(
-		h5_path, 
-        output, 
-		img_path_suffix=suffix,
-		meme_motif_db=meme_db,
+        h5_path,
+        output,
+        img_path_suffix=suffix,
+        meme_motif_db=meme_db,
         top_n_matches=n_matches,
-		ttl=lite, 
+        ttl=lite,
         n_examples=n_examples,
-		trim_threshold=trim_threshold
+        trim_threshold=trim_threshold,
     )
+
 
 @cli.command(help="Convert an old HDF5 file to the new format.")
 @click.option(
@@ -435,7 +436,7 @@ The options are as follows:
               contribution scores are the contributions of nucleotides not encoded
               by the one-hot encoding sequence. 
 - 'CWM-PFM':  The softmax of the contribution-weight matrix.
-- 'hCWM-PFM': The softmax of the hypothetical contribution-weight matrix."""
+- 'hCWM-PFM': The softmax of the hypothetical contribution-weight matrix.""",
 )
 @click.option(
     "-o",
@@ -449,7 +450,9 @@ def meme(h5_path, datatype, output, quiet):
     modiscolite.io.write_meme_from_h5(h5_path, datatype, output, quiet)
 
 
-@cli.command(help="Output a BED file of seqlets from a modisco results file to stdout (default) and/or to a file (if specified).")
+@cli.command(
+    help="Output a BED file of seqlets from a modisco results file to stdout (default) and/or to a file (if specified)."
+)
 @click.option(
     "-i",
     "--h5py",
@@ -507,7 +510,9 @@ def seqlet_bed(
     )
 
 
-@cli.command(help="Output a FASTA file of seqlets from a modisco results file to stdout (default) and/or to a file (if specified).")
+@cli.command(
+    help="Output a FASTA file of seqlets from a modisco results file to stdout (default) and/or to a file (if specified)."
+)
 @click.option(
     "-i",
     "--h5py",
