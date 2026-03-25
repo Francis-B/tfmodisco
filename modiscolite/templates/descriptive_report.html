@@ -695,12 +695,12 @@
             </div>
             {% endif %}
 
-            <!-- Seqlet spatial distribution from center -->
-            {% if 'from_center_spatial' in distribution_paths[pattern_tag] %}
+            <!-- Seqlet spatial distributions -->
+            {% if 'spatial_distributions' in distribution_paths[pattern_tag] %}
             <div class="distribution-item">
-                <h5>Seqlet Spatial Distribution From Center</h5>
+                <h5>Seqlet Spatial Distributions</h5>
                 <p><em>Distribution of seqlet positions within input sequences</em></p>
-                <img src="{{ distribution_paths[pattern_tag]['from_center_spatial'] }}" alt="Spatial From Center">
+                <img src="{{ distribution_paths[pattern_tag]['spatial_distributions'] }}" alt="Spatial From Center">
             </div>
             {% endif %}
 
@@ -727,7 +727,7 @@
             <div class="distribution-item">
                 <h5>Frame of the Highest Scoring Nucleotide of the Seqlets</h5>
                 <p><em>Distribution of seqlet positions within input sequences</em></p>
-                <img src="{{ distribution_paths[pattern_tag]['frames_proportions'] }}" alt="Frames proportion">
+                <img src="{{ distribution_paths[pattern_tag]['frames_proportion'] }}" alt="Frames proportion">
             </div>
             {% endif %}
 

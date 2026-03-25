@@ -205,8 +205,13 @@ def save_pattern(pattern, grp):
     )
     seqlet_grp.create_dataset(
         "track_lengths",
-        data=np.array(pattern.get_track_length()),
+        data=np.array([seqlet.track_length for seqlet in pattern.seqlets]),
     )
+    seqlet_grp.create_dataset(
+        "padding",
+        data=np.array(pattern.get_padding_sizes()),
+    )
+    seqlet_grp.create_dataset("frames", data=np.array(pattern.get_seqlets_frame()))
     seqlet_grp.create_dataset(
         "example_idx", data=np.array([seqlet.example_idx for seqlet in pattern.seqlets])
     )
@@ -228,10 +233,6 @@ def save_pattern(pattern, grp):
     seqlet_grp.create_dataset(
         "entropy_scores",
         data=np.array(pattern.get_seqlets_entropy()),
-    )
-    seqlet_grp.create_dataset(
-        "frames",
-        data=np.array(pattern.get_seqlets_frame()),
     )
 
     if pattern.subclusters is not None:

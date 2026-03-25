@@ -55,7 +55,7 @@ def plot_histogram_to_base64(
     xlim=None,
 ):
     """Create histogram plot and return as base64 string."""
-    fig, ax = plt.subplots(figsize=figsize)
+    _, ax = plt.subplots(figsize=figsize)
     ax.hist(data, bins=bins, alpha=0.7, color=color, edgecolor="black", density=True)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
@@ -65,6 +65,37 @@ def plot_histogram_to_base64(
         ax.set_xlim(xlim)
 
     # Save to base64
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
+    buffer.seek(0)
+    image_base64 = base64.b64encode(buffer.read()).decode("utf-8")
+    plt.close()
+
+    return f"data:image/png;base64,{image_base64}"
+
+
+def plot_pie_to_base64(data, figsize):
+    """
+    Create a pie chart with given data and save to base64.
+    """
+    frame_label, counts = np.unique(np.sort(data), return_counts=True)
+    frame_label = ["+" + str(i) for i in frame_label]
+
+    # Create pie chart
+    fig, ax = plt.subplots(figsize=figsize)
+
+    wedges, texts, autotexts = ax.pie(
+        counts, autopct=lambda pct: f"{pct:.1f}%", labeldistance=1.2
+    )
+    ax.legend(
+        wedges,
+        frame_label,
+        title="Frames",
+        loc="center left",
+        bbox_to_anchor=(1, 0, 0.5, 1),
+    )
+
+    # save to base64
     buffer = io.BytesIO()
     plt.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
     buffer.seek(0)
@@ -103,16 +134,19 @@ def extract_seqlet_data(modisco_h5py: str, pattern_groups: List[str]) -> Dict:
                 entropy_scores = np.array(seqlets_grp["entropy_scores"][:])
 
                 # Get seqlet positions and data if available
-                seqlet_starts = seqlets_grp.get("start", [])
-                seqlet_ends = seqlets_grp.get("end", [])
-                track_lengths = seqlets_grp.get("track_lengths")
-                seqlet_example_idx = seqlets_grp.get("example_idx", [])
+                padding_size = np.array(seqlets_grp.get("padding", []))
+                seqlet_starts = np.array(seqlets_grp.get("start", []))
+                seqlet_ends = np.array(seqlets_grp.get("end", []))
+                track_lengths = np.array(seqlets_grp.get("track_lengths", []))
+                seqlet_example_idx = np.array(seqlets_grp.get("example_idx", []))
+                track_frames = np.array(seqlets_grp.get("frames", []))
 
                 # Get seqlet contribution scores and calculate importance
                 seqlet_contribs = []
                 seqlet_importance = []
                 if "contrib_scores" in seqlets_grp:
                     seqlet_contribs = np.array(seqlets_grp["contrib_scores"][:])
+
                     # Calculate total importance as sum of absolute contribution scores
                     for seqlet_contrib in seqlet_contribs:
                         importance = np.sum(seqlet_contrib)
@@ -129,15 +163,32 @@ def extract_seqlet_data(modisco_h5py: str, pattern_groups: List[str]) -> Dict:
                 if len(seqlet_importance) > 0:
                     std_importance = np.std(seqlet_importance)
 
+                # Get frames of the highest contributing nucleotide
+                highest_contributing_position = np.argmax(cwm)
+                seqlet_frames = (
+                    track_frames
+                    + seqlet_starts
+                    + padding_size
+                    + highest_contributing_position
+                ) % 3
+
                 # Store seqlet positions for global region size calculation
-                seqlet_starts_list = (
-                    np.array(seqlet_starts) if len(seqlet_starts) > 0 else np.array([])
+                # Also correct the coordinate by removing the right padding of the input
+                # sequences
+                padding_size = np.array(padding_size) if len(padding_size) > 0 else 0
+
+                seqlet_starts = (
+                    seqlet_starts - padding_size
+                    if len(seqlet_starts) > 0
+                    else np.array([])
                 )
-                seqlet_ends_list = (
-                    np.array(seqlet_ends) if len(seqlet_ends) > 0 else np.array([])
+                seqlet_ends = (
+                    seqlet_ends - padding_size if len(seqlet_ends) > 0 else np.array([])
                 )
-                track_lengths_list = (
-                    np.array(track_lengths) if len(track_lengths) > 0 else np.array([])
+                track_lengths = (
+                    track_lengths - (padding_size * 2)
+                    if len(track_lengths) > 0
+                    else np.array([])
                 )
 
                 # Distance are being attributed np.nan values as placeholder.
@@ -158,9 +209,11 @@ def extract_seqlet_data(modisco_h5py: str, pattern_groups: List[str]) -> Dict:
                     "std_distance_from_start": np.nan,
                     "median_distance_from_end": np.nan,
                     "std_distance_from_end": np.nan,
-                    "seqlet_starts": seqlet_starts_list,
-                    "seqlet_ends": seqlet_ends_list,
-                    "track_lengths": track_lengths_list,
+                    "seqlet_starts": seqlet_starts,
+                    "seqlet_ends": seqlet_ends,
+                    "seqlet_frames": seqlet_frames,
+                    "track_lengths": track_lengths,
+                    "padding_sizes": padding_size,
                     "seqlet_example_idx": np.array(seqlet_example_idx)
                     if len(seqlet_example_idx) > 0
                     else np.array([]),
@@ -223,14 +276,9 @@ def compute_distances(patterns_data: Dict) -> Dict:
     distribution from start and from end, and to compute the distance from center
     with the local center rather than the global one.
     """
-    # Find the longest track sequence
-    max_length = max([max(data["track_lengths"]) for data in patterns_data.values()])
-
     # Update patterns data with global information and compute distances from center
     updated_patterns_data = patterns_data.copy()
     for pattern_tag, data in updated_patterns_data.items():
-        data["max_length"] = max_length
-
         # Compute median absolute distance from global center and standard deviation
         if len(data["seqlet_starts"]) > 0 and len(data["seqlet_ends"]) > 0:
             # Calculate seqlet center positions
@@ -248,8 +296,11 @@ def compute_distances(patterns_data: Dict) -> Dict:
 
             # Calculate distances from end
             distances_from_end = data["seqlet_ends"] - data["track_lengths"]
-            if max(distances_from_end) > 0:
-                raise ValueError("At least positive distance from end was observed")
+            # Correct distances for seqlet which were extanded in the padding
+            if any(distances_from_end > data["padding_sizes"]):
+                raise ValueError("Some seqlets have coordinate going over the padding.")
+            distances_from_end = np.where(distances_from_end > 0, 0, distances_from_end)
+
             data["median_distance_from_end"] = np.median(distances_from_end)
             data["std_distance_from_end"] = np.std(distances_from_end)
 
@@ -353,6 +404,71 @@ def create_logos(
     return logo_data
 
 
+def plot_spatial_distributions_to_base64(data, bins, color, figsize=(8, 12)):
+    # Calculate seqlet center positions
+    seqlet_centers = (data["seqlet_starts"] + data["seqlet_ends"]) / 2
+    track_centers = data["track_lengths"] / 2
+
+    # Get position of seqlet relative to center and end of input sequences
+    relative_to_center = seqlet_centers - track_centers
+    relative_to_ends = data["seqlet_ends"] - data["track_lengths"]
+
+    # Set bounds based on global region size with center at 0
+    xlim = (-max(relative_to_center), max(relative_to_center))
+
+    fig, axes = plt.subplots(3, 1, figsize=figsize)
+
+    axes[0].hist(
+        relative_to_center,
+        bins=bins,
+        alpha=0.7,
+        color=color,
+        edgecolor="black",
+        density=True,
+    )
+    axes[0].set_xlabel("Amino Acid")
+    axes[0].set_ylabel("Density")
+    axes[0].set_title("Distance from Sequence Centers")
+    axes[0].set_xlim(xlim)
+
+    axes[1].hist(
+        data["seqlet_starts"],
+        bins=bins,
+        alpha=0.7,
+        color=color,
+        edgecolor="black",
+        density=True,
+    )
+    axes[1].set_xlabel("Amino Acid")
+    axes[1].set_ylabel("Density")
+    axes[1].set_title("Distance from Sequence Starts")
+    axes[1].set_xlim((0, max(data["seqlet_starts"]) + 1))
+
+    axes[2].hist(
+        relative_to_ends,
+        bins=bins,
+        alpha=0.7,
+        color=color,
+        edgecolor="black",
+        density=True,
+    )
+    axes[2].set_xlabel("Amino Acid")
+    axes[2].set_ylabel("Density")
+    axes[2].set_title("Distance from Sequence Ends")
+    axes[2].set_xlim((min(relative_to_ends) - 1, 0))
+
+    fig.tight_layout()
+
+    # Save to base64
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
+    buffer.seek(0)
+    image_base64 = base64.b64encode(buffer.read()).decode("utf-8")
+    plt.close()
+
+    return f"data:image/png;base64,{image_base64}"
+
+
 def create_distribution_plots(patterns_data: Dict, output_dir: str) -> Dict:
     """Create seqlet importance and spatial distribution plots as base64 data."""
     distribution_data = {}
@@ -372,50 +488,16 @@ def create_distribution_plots(patterns_data: Dict, output_dir: str) -> Dict:
                 figsize=(8, 4),
             )
 
-        # Seqlet spatial distribution
-        if len(data["seqlet_starts"]) > 0:
-            # Calculate seqlet center positions
-            seqlet_centers = (data["seqlet_starts"] + data["seqlet_ends"]) / 2
-            track_centers = data["track_lengths"] / 2
-
-            # Adjust centers to be relative to global center (center at 0)
-            relative_to_center = seqlet_centers - track_centers
-
-            # Set bounds based on global region size with center at 0
-            xlim = (-max(relative_to_center), max(relative_to_center))
-
-            plots["from_center_spatial"] = plot_histogram_to_base64(
-                relative_to_center,
+            plots["spatial_distributions"] = plot_spatial_distributions_to_base64(
+                data,
                 bins=30,
                 color="lightcoral",
-                xlabel="Position Relative to Region Center (bp)",
-                ylabel="Density",
-                title=f"Seqlet Spatial Distribution - {pattern_tag}",
-                figsize=(8, 4),
-                xlim=xlim,
+                figsize=(8, 10),
             )
 
-            plots["from_start_spatial"] = plot_histogram_to_base64(
-                data["seqlet_starts"],
-                bins=30,
-                color="lightcoral",
-                xlabel="Position Relative To Region Start (bp)",
-                ylabel="Density",
-                title=f"Seqlet Spatial Distribution - {pattern_tag}",
+            plots["frames_proportion"] = plot_pie_to_base64(
+                data["seqlet_frames"],
                 figsize=(8, 4),
-                xlim=(0, max(data["seqlet_starts"])),
-            )
-
-            relative_to_ends = data["seqlet_ends"] - data["track_lengths"]
-            plots["from_start_end"] = plot_histogram_to_base64(
-                relative_to_ends,
-                bins=30,
-                color="lightcoral",
-                xlabel="Position Relative To Region End (bp)",
-                ylabel="Density",
-                title=f"Seqlet Spatial Distribution - {pattern_tag}",
-                figsize=(8, 4),
-                xlim=(min(relative_to_ends), 0),
             )
 
         distribution_data[pattern_tag] = plots

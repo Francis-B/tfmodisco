@@ -94,11 +94,8 @@ def _iterative_extract_seqlets(score_track, track_set, window, flank):
     for example_idx, single_score_track in enumerate(score_track):
         # Total track length
         length = len(single_score_track)
-
-        no_padding_length = track_set.get_track_length(
-            example_idx, include_padding=False
-        )
-
+        padding_size = track_set.get_padding_size(example_idx)
+        track_frame = track_set.get_track_frame(example_idx)
         while True:
             if len(single_score_track) <= total_flank + 1:
                 break
@@ -119,7 +116,9 @@ def _iterative_extract_seqlets(score_track, track_set, window, flank):
                     start=argmax - total_flank,
                     end=argmax + total_flank,
                     is_revcomp=False,
-                    track_length=no_padding_length,
+                    track_length=length,
+                    padding_size=padding_size,
+                    track_frame=track_frame,
                 )
             # Move seqlet window to the right
             elif argmax < total_flank:
@@ -128,7 +127,9 @@ def _iterative_extract_seqlets(score_track, track_set, window, flank):
                     start=0,
                     end=total_flank * 2,
                     is_revcomp=False,
-                    track_length=no_padding_length,
+                    track_length=length,
+                    padding_size=padding_size,
+                    track_frame=track_frame,
                 )
             # Move seqlet window to the left
             elif argmax > (length - total_flank):
@@ -137,7 +138,9 @@ def _iterative_extract_seqlets(score_track, track_set, window, flank):
                     start=length - total_flank * 2,
                     end=length,
                     is_revcomp=False,
-                    track_length=no_padding_length,
+                    track_length=length,
+                    padding_size=padding_size,
+                    track_frame=track_frame,
                 )
             else:
                 print("total_flank:", total_flank)

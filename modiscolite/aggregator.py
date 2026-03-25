@@ -109,9 +109,8 @@ def _expand_seqlets_to_fill_pattern(
 
         # Make sure the track is long enough for the expanded seqlet
         track_length = track_set.get_track_length(seqlet.example_idx)
-        no_padding_length = track_set.get_track_length(
-            seqlet.example_idx, include_padding=False
-        )
+        padding_size = track_set.get_padding_size(seqlet.example_idx)
+        track_frame = track_set.get_track_frame(seqlet.example_idx)
         if start > 0 and end < track_length:
             seqlet = track_set.create_seqlets(
                 seqlets=[
@@ -120,7 +119,9 @@ def _expand_seqlets_to_fill_pattern(
                         start=start,
                         end=end,
                         is_revcomp=seqlet.is_revcomp,
-                        track_length=no_padding_length,
+                        track_length=track_length,
+                        padding_size=padding_size,
+                        track_frame=track_frame,
                     )
                 ]
             )[0]
@@ -233,7 +234,7 @@ def merge_in_seqlets_filledges(
     parent_pattern = parent_pattern.copy()
 
     for seqlet in seqlets_to_merge:
-        alnmt, revcomp_match, alnmt_score = _align_patterns(
+        alnmt, revcomp_match, _ = _align_patterns(
             parent_pattern,
             seqlet,
             metric,
@@ -258,10 +259,11 @@ def merge_in_seqlets_filledges(
             start = seqlet.start - right_expansion
             end = seqlet.end + left_expansion
 
+        # Get track information to pass it down to seqlet
         length = track_set.get_track_length(seqlet.example_idx)
-        no_padding_length = track_set.get_track_length(
-            seqlet.example_idx, include_padding=False
-        )
+        padding_size = track_set.get_padding_size(seqlet.example_idx)
+        track_frame = track_set.get_track_frame(seqlet.example_idx)
+
         if start >= 0 and end <= length:
             seqlet = track_set.create_seqlets(
                 seqlets=[
@@ -270,7 +272,9 @@ def merge_in_seqlets_filledges(
                         start=start,
                         end=end,
                         is_revcomp=seqlet.is_revcomp,
-                        track_length=no_padding_length,
+                        track_length=length,
+                        padding_size=padding_size,
+                        track_frame=track_frame,
                     )
                 ]
             )[0]
@@ -310,7 +314,7 @@ class PatternMergeHierarchy(object):
         self.root_nodes = root_nodes
 
     def add_level(self, level_arr):
-        self.levels.append(level_arr)
+        self.levels.append(level_arr)  # type: ignore
 
 
 class PatternMergeHierarchyNode(object):
@@ -373,7 +377,7 @@ def _detect_spurious_merging(
     verbose : bool, default=False
     """
     to_return = []
-    for i, pattern in enumerate(
+    for _, pattern in enumerate(
         tqdm(
             patterns,
             desc="Detecting spurious merging of patterns:",
@@ -546,8 +550,8 @@ def SimilarPatternsCollapser(
                 )[:, :, 0].flatten()
 
                 auroc = roc_auc_score(
-                    y_true=[0 for x in between_pattern_sims]
-                    + [1 for x in within_pattern1_sims],
+                    y_true=[0 for _ in between_pattern_sims]
+                    + [1 for _ in within_pattern1_sims],
                     y_score=list(between_pattern_sims) + list(within_pattern1_sims),
                 )
 
@@ -716,7 +720,7 @@ def SimilarPatternsCollapser(
                         # per pattern
                         next_level_nodes.append(old_pattern_node)
                         old_pattern_node_found = True
-                if old_pattern_node_found == False:
+                if not old_pattern_node_found:
                     next_level_nodes.append(PatternMergeHierarchyNode(frontier_pattern))
 
             for next_level_node in next_level_nodes:

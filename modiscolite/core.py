@@ -2,8 +2,6 @@
 # Authors: Jacob Schreiber <jmschreiber91@gmail.com>
 # adapted from code written by Avanti Shrikumar
 
-import pickle
-
 import numpy as np
 import scipy.sparse
 from scipy.stats import entropy
@@ -16,10 +14,11 @@ from collections import OrderedDict
 
 
 class TrackSet(object):
-    def __init__(self, one_hot, contrib_scores, hypothetical_contribs):
+    def __init__(self, one_hot, contrib_scores, hypothetical_contribs, frames=None):
         self.one_hot = one_hot
         self.contrib_scores = contrib_scores
         self.hypothetical_contribs = hypothetical_contribs
+        self.frames = frames
 
     def create_seqlets(self, seqlets):
         for seqlet in seqlets:
@@ -59,24 +58,53 @@ class TrackSet(object):
         else:
             nonzero = self.one_hot[example_idx].sum(axis=1).nonzero()[0]
             start = nonzero[0]
-            end = nonzero[-1]
-            length = end - start
-            if np.isnan(length):
-                raise ValueError(
-                    f"Invalid length obtained with {start} (start) and {end} (end)"
-                )
+            end = nonzero[-1] + 1
             return end - start
+
+    def get_track_frame(self, example_idx):
+        """
+        Get the reading frame number of the first position in the given track.
+        """
+
+        if self.frames is None:
+            return np.nan
+        return self.frames[example_idx]
+
+    def get_padding_size(self, example_idx):
+        """
+        Get the padding size. This method assumes that right and left padding are
+        of the same size and so only the right side padding size.
+
+        Parameters
+        ----------
+        example_idx: int
+            Index of the track to check padding.
+
+        Returns
+        -------
+        int
+            Right padding size.
+        """
+        return self.one_hot[example_idx].sum(axis=1).nonzero()[0][0]
 
 
 class Seqlet(object):
     def __init__(
-        self, example_idx, start, end, is_revcomp, track_length, track_frame=None
+        self,
+        example_idx,
+        start,
+        end,
+        is_revcomp,
+        track_length=None,
+        padding_size=None,
+        track_frame=None,
     ):
         self.example_idx = example_idx
         self.start = start
         self.end = end
         self.is_revcomp = is_revcomp
         self.track_length = track_length
+        self.padding_size = padding_size
         self.track_frame = track_frame
 
         self.sequence = None
@@ -111,6 +139,8 @@ class Seqlet(object):
             end=self.end,
             is_revcomp=not self.is_revcomp,
             track_length=self.track_length,
+            padding_size=self.padding_size,
+            track_frame=self.track_frame,
         )
 
         if self.sequence is None:
@@ -125,10 +155,17 @@ class Seqlet(object):
         new_seqlet.hypothetical_contribs = self.hypothetical_contribs[::-1, ::-1]
         return new_seqlet
 
-    def get_loc_in_frame(self):
+    def get_loc_in_frame(self, idx=None):
         """
         Get the localisation of the highest scoring nucleotide in the same reading
         frame has the annotated CDS.
+
+        TODO: Complete this method.
+
+        Parameters
+        ----------
+        idx : int
+            idx of the nucleotide of interest.
 
         Returns
         -------
@@ -136,7 +173,9 @@ class Seqlet(object):
             Reading frame. Either 0, 1 or 2 (0 meaning that the nucleotide is the
             first of a codon in the reading frame of the annotated CDS).
         """
-        pass
+        if self.track_frame is None:
+            return np.nan
+        return (self.track_frame + idx) % 3
 
     def shift(self, shift_amt):
         return Seqlet(
@@ -145,6 +184,8 @@ class Seqlet(object):
             end=self.end + shift_amt,
             is_revcomp=self.is_revcomp,
             track_length=self.track_length,
+            padding_size=self.padding_size,
+            track_frame=self.track_frame,
         )
 
     def trim(self, start_idx, end_idx):
@@ -175,6 +216,8 @@ class Seqlet(object):
             end=new_end,
             is_revcomp=self.is_revcomp,
             track_length=self.track_length,
+            padding_size=self.padding_size,
+            track_frame=self.track_frame,
         )
 
         new_seqlet.sequence = self.sequence[s:e]
@@ -316,7 +359,7 @@ class SeqletSet:
         """
         return [seqlet.get_entropy() for seqlet in self.seqlets]
 
-    def get_track_length(self):
+    def get_padding_sizes(self):
         """
         Get the track length from which the seqlet were extracted.
 
@@ -326,17 +369,18 @@ class SeqletSet:
             Length of the seqlets respective track.
         """
 
-        track_lengths = [seqlet.track_length for seqlet in self.seqlets]
-        if any(~np.isnan(track_lengths)):
+        padding_sizes = [seqlet.padding_size for seqlet in self.seqlets]
+
+        if any(np.isnan(padding_sizes)):
             raise ValueError("Some seqlets has no length defined.")
 
-        return track_lengths
+        return padding_sizes
 
-    def get_seqlet_frames(self):
+    def get_seqlets_frame(self):
         """
         Get the frame in which is the highest contributing nucleotides of each seqlet.
         """
-        return [seqlet.get_frame() for seqlet in self.seqlets()]
+        return [seqlet.get_loc_in_frame(0) for seqlet in self.seqlets]
 
     def trim_to_support(self, min_frac, min_num, min_length):
         """

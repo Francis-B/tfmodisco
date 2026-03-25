@@ -411,7 +411,7 @@ def seqlets_to_patterns(
 
     logger.info("Detecting spurious merging of patterns")
     merged_patterns, pattern_merge_hierarchy = aggregator._detect_spurious_merging(
-        patterns=patterns,
+        patterns=patterns,  # type: ignore
         track_set=track_set,
         perplexity=subcluster_perplexity,
         min_in_subcluster=max(final_min_cluster_size, subcluster_perplexity),
@@ -452,7 +452,7 @@ def seqlets_to_patterns(
             right_flank_to_add=final_flank_to_add,
         )
 
-        pattern.compute_subpatterns(
+        pattern.compute_subpatterns(  # type: ignore
             subcluster_perplexity,
             n_seeds=n_leiden_runs,
             n_iterations=n_leiden_iterations,
@@ -466,6 +466,7 @@ def seqlets_to_patterns(
 def TFMoDISco(
     one_hot,
     hypothetical_contribs,
+    frames=None,
     sliding_window_size=21,
     flank_size=10,
     min_metacluster_size=100,
@@ -658,6 +659,7 @@ def TFMoDISco(
         one_hot=one_hot,
         contrib_scores=contrib_scores,
         hypothetical_contribs=hypothetical_contribs,
+        frames=frames,
     )
 
     # Sum the contibution scores to get one contribution score per base
