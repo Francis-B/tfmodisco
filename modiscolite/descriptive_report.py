@@ -1,7 +1,10 @@
 import os
 import h5py
 import numpy as np
+import pandas as pd
+import seaborn as sns
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 from jinja2 import Template
 from typing import List, Dict, Optional
 import importlib.resources
@@ -17,7 +20,7 @@ from .report import (
 from memelite.io import read_meme
 
 
-def plot_to_base64(array, figsize=(10, 3), clamp=True):
+def plot_to_base64(array, figsize=(10, 3), clamp=True, highest_nucleotide=None):
     """Plot weights as a sequence logo and return as base64 string."""
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111)
@@ -34,6 +37,21 @@ def plot_to_base64(array, figsize=(10, 3), clamp=True):
     if clamp:
         plt.ylim(min(df.sum(axis=1).min(), 0), df.sum(axis=1).max())
 
+    if highest_nucleotide is not None:
+        start = highest_nucleotide - 0.5
+        height = df.sum(axis=1).max()
+        height_correction = height * 0.1  # Make it a bit higher
+        rec = Rectangle(
+            (start, 0 - height_correction),
+            1,
+            height + (height_correction * 2),
+            facecolor="#9AA7B8",
+            alpha=0.2,
+            clip_on=False,
+            zorder=0,
+        )
+        ax.add_patch(rec)
+
     # Save to base64
     buffer = io.BytesIO()
     plt.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
@@ -47,7 +65,6 @@ def plot_to_base64(array, figsize=(10, 3), clamp=True):
 def plot_histogram_to_base64(
     data,
     bins=30,
-    color="skyblue",
     xlabel="",
     ylabel="Density",
     title="",
@@ -56,10 +73,58 @@ def plot_histogram_to_base64(
 ):
     """Create histogram plot and return as base64 string."""
     _, ax = plt.subplots(figsize=figsize)
-    ax.hist(data, bins=bins, alpha=0.7, color=color, edgecolor="black", density=True)
+
+    if max(data) - min(data) > bins:
+        bins = max(data) - min(data)
+
+    sns.histplot(
+        data,
+        alpha=0.7,
+        edgecolor="black",
+        stat="density",
+        kde=True,
+        discrete=True,
+    )
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
+    ax.spines[["top", "right"]].set_visible(False)
+
+    if xlim is not None:
+        ax.set_xlim(xlim)
+
+    # Save to base64
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
+    buffer.seek(0)
+    image_base64 = base64.b64encode(buffer.read()).decode("utf-8")
+    plt.close()
+
+    return f"data:image/png;base64,{image_base64}"
+
+
+def plot_entropy_to_base64(
+    data,
+    title="",
+    figsize=(8, 4),
+    xlim=None,
+):
+    """Create histogram plot and return as base64 string."""
+    _, ax = plt.subplots(figsize=figsize)
+
+    sns.histplot(
+        data,
+        x="values",
+        hue="distribution" if "null" in data["distribution"].values else None,
+        alpha=0.7,
+        edgecolor="black",
+        stat="density",
+        kde=True,
+    )
+    ax.set_xlabel("Entropy scores")
+    ax.set_ylabel("Density")
+    ax.set_title(title)
+    ax.spines[["top", "right"]].set_visible(False)
 
     if xlim is not None:
         ax.set_xlim(xlim)
@@ -78,21 +143,25 @@ def plot_pie_to_base64(data, figsize):
     """
     Create a pie chart with given data and save to base64.
     """
-    frame_label, counts = np.unique(np.sort(data), return_counts=True)
-    frame_label = ["+" + str(i) for i in frame_label]
+    frame_labels = [0, 1, 2]
+    counts = [(data == frame).sum() for frame in frame_labels]
+    frame_label = ["+" + str(i) for i in frame_labels]
 
     # Create pie chart
     fig, ax = plt.subplots(figsize=figsize)
 
     wedges, texts, autotexts = ax.pie(
-        counts, autopct=lambda pct: f"{pct:.1f}%", labeldistance=1.2
+        counts,
+        colors=sns.color_palette("Set2"),
+        autopct=lambda pct: f"{pct:.1f}%" if pct > 0 else "",
+        pctdistance=1.3,
     )
     ax.legend(
         wedges,
         frame_label,
         title="Frames",
         loc="center left",
-        bbox_to_anchor=(1, 0, 0.5, 1),
+        bbox_to_anchor=(1.2, 0, 0.5, 1),
     )
 
     # save to base64
@@ -214,6 +283,7 @@ def extract_seqlet_data(modisco_h5py: str, pattern_groups: List[str]) -> Dict:
                     "seqlet_frames": seqlet_frames,
                     "track_lengths": track_lengths,
                     "padding_sizes": padding_size,
+                    "entropy_scores": entropy_scores,
                     "seqlet_example_idx": np.array(seqlet_example_idx)
                     if len(seqlet_example_idx) > 0
                     else np.array([]),
@@ -332,6 +402,8 @@ def create_logos(
         hcwm = data["hcwm"]
         ppm = data["ppm"]
 
+        highest_nucleotide = np.argmax(cwm.sum(axis=1))
+
         # Calculate trimmed version
         score = np.sum(cwm, axis=1)
         trim_thresh = np.max(score) * trim_threshold
@@ -341,8 +413,10 @@ def create_logos(
             start_trim = max(np.min(pass_inds) - 2, 0)
             end_trim = min(np.max(pass_inds) + 3, len(score))
             trimmed_cwm = cwm[start_trim:end_trim]
+            trimmed_highest_nucleotide = np.argmax(trimmed_cwm.sum(axis=1))
         else:
             trimmed_cwm = cwm
+            trimmed_highest_nucleotide = highest_nucleotide
 
         # Generate logos as both files and base64
         logos = {}
@@ -350,13 +424,17 @@ def create_logos(
         # CWM Logo
         cwm_path = os.path.join(pattern_dir, "cwm_logo.png")
         _plot_weights(cwm, cwm_path, figsize=(12, 3))
-        logos["cwm"] = plot_to_base64(cwm, figsize=(12, 3))
+        logos["cwm"] = plot_to_base64(
+            cwm, figsize=(12, 3), highest_nucleotide=highest_nucleotide
+        )
         logos["cwm_path"] = cwm_path
 
         # hCWM Logo
         hcwm_path = os.path.join(pattern_dir, "hcwm_logo.png")
         _plot_weights(hcwm, hcwm_path, figsize=(12, 3), clamp=False)
-        logos["hcwm"] = plot_to_base64(hcwm, figsize=(12, 3), clamp=False)
+        logos["hcwm"] = plot_to_base64(
+            hcwm, figsize=(12, 3), clamp=False, highest_nucleotide=highest_nucleotide
+        )
         logos["hcwm_path"] = hcwm_path
 
         # IC-scaled PPM Logo (information-weighted PPM)
@@ -364,7 +442,9 @@ def create_logos(
         ic = compute_per_position_ic(ppm, background, 0.001)
         ic_ppm_path = os.path.join(pattern_dir, "ic_ppm_logo.png")
         _plot_weights(ppm * ic[:, None], ic_ppm_path, figsize=(12, 3))
-        logos["ic_ppm"] = plot_to_base64(ppm * ic[:, None], figsize=(12, 3))
+        logos["ic_ppm"] = plot_to_base64(
+            ppm * ic[:, None], figsize=(12, 3), highest_nucleotide=highest_nucleotide
+        )
         logos["ic_ppm_path"] = ic_ppm_path
 
         # Keep PWM alias for backwards compatibility
@@ -374,7 +454,9 @@ def create_logos(
         # Trimmed CWM Logo (Forward)
         trimmed_path = os.path.join(pattern_dir, "trimmed_cwm_fwd_logo.png")
         _plot_weights(trimmed_cwm, trimmed_path, figsize=(10, 3))
-        logos["trimmed_cwm_fwd"] = plot_to_base64(trimmed_cwm, figsize=(10, 3))
+        logos["trimmed_cwm_fwd"] = plot_to_base64(
+            trimmed_cwm, figsize=(10, 3), highest_nucleotide=trimmed_highest_nucleotide
+        )
         logos["trimmed_cwm_fwd_path"] = trimmed_path
 
         # Trimmed CWM Logo (Reverse)
@@ -404,7 +486,8 @@ def create_logos(
     return logo_data
 
 
-def plot_spatial_distributions_to_base64(data, bins, color, figsize=(8, 12)):
+def plot_spatial_distributions_to_base64(data, bins=30, figsize=(8, 12)):
+
     # Calculate seqlet center positions
     seqlet_centers = (data["seqlet_starts"] + data["seqlet_ends"]) / 2
     track_centers = data["track_lengths"] / 2
@@ -414,45 +497,55 @@ def plot_spatial_distributions_to_base64(data, bins, color, figsize=(8, 12)):
     relative_to_ends = data["seqlet_ends"] - data["track_lengths"]
 
     # Set bounds based on global region size with center at 0
-    xlim = (-max(relative_to_center), max(relative_to_center))
+    lim = max(relative_to_center) + 1
+    xlim = (-lim, lim)
 
     fig, axes = plt.subplots(3, 1, figsize=figsize)
 
-    axes[0].hist(
+    for ax in axes.flatten():
+        ax.spines[["top", "right"]].set_visible(False)
+
+    sns.histplot(
         relative_to_center,
-        bins=bins,
         alpha=0.7,
-        color=color,
-        edgecolor="black",
-        density=True,
+        bins=bins,
+        ax=axes[0],
+        stat="density",
+        kde=True,
+        line_kws={"color": "black"},
+        discrete=True,
     )
-    axes[0].set_xlabel("Amino Acid")
+    axes[0].set_xlabel("Nucleotide")
     axes[0].set_ylabel("Density")
     axes[0].set_title("Distance from Sequence Centers")
     axes[0].set_xlim(xlim)
 
-    axes[1].hist(
+    sns.histplot(
         data["seqlet_starts"],
-        bins=bins,
         alpha=0.7,
-        color=color,
-        edgecolor="black",
-        density=True,
+        bins=bins,
+        ax=axes[1],
+        stat="density",
+        kde=True,
+        line_kws={"color": "black"},
+        discrete=True,
     )
-    axes[1].set_xlabel("Amino Acid")
+    axes[1].set_xlabel("Nucleotide")
     axes[1].set_ylabel("Density")
     axes[1].set_title("Distance from Sequence Starts")
     axes[1].set_xlim((0, max(data["seqlet_starts"]) + 1))
 
-    axes[2].hist(
+    sns.histplot(
         relative_to_ends,
-        bins=bins,
         alpha=0.7,
-        color=color,
-        edgecolor="black",
-        density=True,
+        bins=bins,
+        ax=axes[2],
+        stat="density",
+        kde=True,
+        line_kws={"color": "black"},
+        discrete=True,
     )
-    axes[2].set_xlabel("Amino Acid")
+    axes[2].set_xlabel("Nucleotide")
     axes[2].set_ylabel("Density")
     axes[2].set_title("Distance from Sequence Ends")
     axes[2].set_xlim((min(relative_to_ends) - 1, 0))
@@ -469,7 +562,9 @@ def plot_spatial_distributions_to_base64(data, bins, color, figsize=(8, 12)):
     return f"data:image/png;base64,{image_base64}"
 
 
-def create_distribution_plots(patterns_data: Dict, output_dir: str) -> Dict:
+def create_distribution_plots(
+    patterns_data: Dict, output_dir: str, null_entropy_distribution: np.ndarray | None
+) -> Dict:
     """Create seqlet importance and spatial distribution plots as base64 data."""
     distribution_data = {}
 
@@ -481,7 +576,6 @@ def create_distribution_plots(patterns_data: Dict, output_dir: str) -> Dict:
             plots["importance"] = plot_histogram_to_base64(
                 data["seqlet_importance"],
                 bins=30,
-                color="skyblue",
                 xlabel="Seqlet Total Contribution Score",
                 ylabel="Density",
                 title=f"Seqlet Contribution Score Distribution - {pattern_tag}",
@@ -491,12 +585,35 @@ def create_distribution_plots(patterns_data: Dict, output_dir: str) -> Dict:
             plots["spatial_distributions"] = plot_spatial_distributions_to_base64(
                 data,
                 bins=30,
-                color="lightcoral",
                 figsize=(8, 10),
             )
 
             plots["frames_proportion"] = plot_pie_to_base64(
                 data["seqlet_frames"],
+                figsize=(8, 4),
+            )
+
+            if null_entropy_distribution is not None:
+                entropy_df = pd.concat(
+                    [
+                        pd.DataFrame(
+                            {"values": data["entropy_scores"], "distribution": "true"}
+                        ),
+                        pd.DataFrame(
+                            {
+                                "values": null_entropy_distribution,
+                                "distribution": "null",
+                            }
+                        ),
+                    ]
+                )
+            else:
+                entropy_df = pd.DataFrame(
+                    {"values": data["entropy_scores"], "distribution": "true"}
+                )
+            plots["entropy_scores"] = plot_entropy_to_base64(
+                entropy_df,
+                title="Seqlet Entropy Score Distribution",
                 figsize=(8, 4),
             )
 
@@ -518,6 +635,8 @@ def create_seqlet_example_logos(
         if len(data["seqlet_importance"]) == 0 or len(data["seqlet_contribs"]) == 0:
             continue
 
+        # Get the position of the highest score nucleotide in the motif
+        highest_nucleotide = np.argmax(data["cwm"].sum(axis=1))
         pattern_dir = os.path.join(examples_dir, pattern_tag)
         os.makedirs(pattern_dir, exist_ok=True)
 
@@ -569,7 +688,11 @@ def create_seqlet_example_logos(
                     _plot_weights(seqlet_cwm, logo_path, figsize=(8, 1.2))
 
                     # Also create base64 data
-                    base64_data = plot_to_base64(seqlet_cwm, figsize=(8, 1.2))
+                    base64_data = plot_to_base64(
+                        seqlet_cwm,
+                        figsize=(8, 1.2),
+                        highest_nucleotide=highest_nucleotide,
+                    )
 
                     example_logos.append(
                         {
@@ -651,6 +774,7 @@ def create_descriptive_names(tomtom_data: Dict, top_n_matches: int = 3) -> Dict:
 def generate_descriptive_report(
     modisco_h5py: str,
     output_dir: str,
+    null_entropy_distribution: Optional[np.ndarray] | None = None,
     img_path_suffix: str = "./",
     meme_motif_db: Optional[str] = None,
     top_n_matches: int = 3,
@@ -673,7 +797,9 @@ def generate_descriptive_report(
 
     # Create visualizations
     logo_paths = create_logos(patterns_data, output_dir, trim_threshold)
-    distribution_paths = create_distribution_plots(patterns_data, output_dir)
+    distribution_paths = create_distribution_plots(
+        patterns_data, output_dir, null_entropy_distribution
+    )
     examples_data = create_seqlet_example_logos(patterns_data, output_dir, n_examples)
 
     # Get Tomtom matches if database provided
