@@ -62,6 +62,82 @@ def plot_to_base64(array, figsize=(10, 3), clamp=True, highest_nucleotide=None):
     return f"data:image/png;base64,{image_base64}"
 
 
+def plot_spatial_distributions_to_base64(data, bins=30, figsize=(8, 12)):
+
+    fig, axes = plt.subplots(3, 1, figsize=figsize)
+    for ax in axes.flatten():
+        ax.spines[["top", "right"]].set_visible(False)
+
+    # Calculate seqlet center positions
+    seqlet_centers = (data["seqlet_starts"] + data["seqlet_ends"]) / 2
+    track_centers = data["track_lengths"] / 2
+
+    # Get position of seqlet relative to center and end of input sequences
+    relative_to_center = seqlet_centers - track_centers
+    relative_to_ends = data["seqlet_ends"] - data["track_lengths"]
+
+    # Set bounds based on global region size with center at 0
+    lim = max(np.abs(relative_to_center)) + 1
+    center_xlim = (-lim, lim)
+
+    sns.histplot(
+        relative_to_center,
+        alpha=0.7,
+        ax=axes[0],
+        stat="density",
+        kde=True,
+        line_kws={"color": "black"},
+        bins=bins,
+        binrange=center_xlim,
+    )
+    axes[0].set_xlabel("Nucleotide")
+    axes[0].set_ylabel("Density")
+    axes[0].set_title("Distance from Sequence Centers")
+    axes[0].set_xlim(center_xlim)
+
+    max_value = max(max(data["seqlet_starts"]), max(abs(relative_to_ends)))
+    sns.histplot(
+        data["seqlet_starts"],
+        alpha=0.7,
+        ax=axes[1],
+        stat="density",
+        kde=True,
+        line_kws={"color": "black"},
+        bins=bins,
+        binrange=(0, max_value),
+    )
+    axes[1].set_xlabel("Nucleotide")
+    axes[1].set_ylabel("Density")
+    axes[1].set_title("Distance from Sequence Starts")
+    axes[1].set_xlim((0, max_value + 1))
+
+    sns.histplot(
+        relative_to_ends,
+        alpha=0.7,
+        ax=axes[2],
+        stat="density",
+        kde=True,
+        line_kws={"color": "black"},
+        bins=bins,
+        binrange=(-max_value, 0),
+    )
+    axes[2].set_xlabel("Nucleotide")
+    axes[2].set_ylabel("Density")
+    axes[2].set_title("Distance from Sequence Ends")
+    axes[2].set_xlim((-max_value - 1, 0))
+
+    fig.tight_layout()
+
+    # Save to base64
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
+    buffer.seek(0)
+    image_base64 = base64.b64encode(buffer.read()).decode("utf-8")
+    plt.close()
+
+    return f"data:image/png;base64,{image_base64}"
+
+
 def plot_histogram_to_base64(
     data,
     bins=30,
@@ -119,6 +195,7 @@ def plot_entropy_to_base64(
         alpha=0.7,
         edgecolor="black",
         stat="density",
+        bins=20,
         kde=True,
     )
     ax.set_xlabel("Entropy scores")
@@ -296,55 +373,9 @@ def extract_seqlet_data(modisco_h5py: str, pattern_groups: List[str]) -> Dict:
     return patterns_data
 
 
-def compute_global_region_size_and_distances(patterns_data: Dict) -> Dict:
-    """Compute global region size and update median distances from center."""
-    # Find global region size from maximum extent of any seqlet
-    global_min = float("inf")
-    global_max = float("-inf")
-
-    for pattern_tag, data in patterns_data.items():
-        if len(data["seqlet_starts"]) > 0 and len(data["seqlet_ends"]) > 0:
-            pattern_min = np.min(data["seqlet_starts"])
-            pattern_max = np.max(data["seqlet_ends"])
-            global_min = min(global_min, pattern_min)
-            global_max = max(global_max, pattern_max)
-
-    # If no seqlets found, use a default
-    if global_min == float("inf"):
-        global_region_size = 400  # Default fallback
-        global_center = 200
-    else:
-        global_region_size = global_max - global_min
-        global_center = (global_max + global_min) / 2
-
-    # Update patterns data with global information and compute distances from center
-    updated_patterns_data = patterns_data.copy()
-    for pattern_tag, data in updated_patterns_data.items():
-        # Add global region information
-        data["global_region_size"] = global_region_size
-        data["global_center"] = global_center
-
-        # Compute median absolute distance from global center and standard deviation
-        if len(data["seqlet_starts"]) > 0 and len(data["seqlet_ends"]) > 0:
-            # Calculate seqlet center positions
-            seqlet_centers = (data["seqlet_starts"] + data["seqlet_ends"]) / 2
-            # Calculate distances from global center
-            distances_from_center = np.abs(seqlet_centers - global_center)
-            data["median_abs_distance_from_center"] = np.median(distances_from_center)
-            data["std_distance_from_center"] = np.std(distances_from_center)
-        else:
-            data["median_abs_distance_from_center"] = np.nan
-            data["std_distance_from_center"] = np.nan
-
-    return updated_patterns_data
-
-
 def compute_distances(patterns_data: Dict) -> Dict:
     """
-    Compute the spatial distribution data. This function is meant to replace the
-    `compute_globa_region_size_and_distances` function to implement the spatial
-    distribution from start and from end, and to compute the distance from center
-    with the local center rather than the global one.
+    Compute the spatial distribution data.
     """
     # Update patterns data with global information and compute distances from center
     updated_patterns_data = patterns_data.copy()
@@ -484,82 +515,6 @@ def create_logos(
         logo_data[pattern_tag] = logos
 
     return logo_data
-
-
-def plot_spatial_distributions_to_base64(data, bins=30, figsize=(8, 12)):
-
-    # Calculate seqlet center positions
-    seqlet_centers = (data["seqlet_starts"] + data["seqlet_ends"]) / 2
-    track_centers = data["track_lengths"] / 2
-
-    # Get position of seqlet relative to center and end of input sequences
-    relative_to_center = seqlet_centers - track_centers
-    relative_to_ends = data["seqlet_ends"] - data["track_lengths"]
-
-    # Set bounds based on global region size with center at 0
-    lim = max(relative_to_center) + 1
-    xlim = (-lim, lim)
-
-    fig, axes = plt.subplots(3, 1, figsize=figsize)
-
-    for ax in axes.flatten():
-        ax.spines[["top", "right"]].set_visible(False)
-
-    sns.histplot(
-        relative_to_center,
-        alpha=0.7,
-        bins=bins,
-        ax=axes[0],
-        stat="density",
-        kde=True,
-        line_kws={"color": "black"},
-        discrete=True,
-    )
-    axes[0].set_xlabel("Nucleotide")
-    axes[0].set_ylabel("Density")
-    axes[0].set_title("Distance from Sequence Centers")
-    axes[0].set_xlim(xlim)
-
-    sns.histplot(
-        data["seqlet_starts"],
-        alpha=0.7,
-        bins=bins,
-        ax=axes[1],
-        stat="density",
-        kde=True,
-        line_kws={"color": "black"},
-        discrete=True,
-    )
-    axes[1].set_xlabel("Nucleotide")
-    axes[1].set_ylabel("Density")
-    axes[1].set_title("Distance from Sequence Starts")
-    axes[1].set_xlim((0, max(data["seqlet_starts"]) + 1))
-
-    sns.histplot(
-        relative_to_ends,
-        alpha=0.7,
-        bins=bins,
-        ax=axes[2],
-        stat="density",
-        kde=True,
-        line_kws={"color": "black"},
-        discrete=True,
-    )
-    axes[2].set_xlabel("Nucleotide")
-    axes[2].set_ylabel("Density")
-    axes[2].set_title("Distance from Sequence Ends")
-    axes[2].set_xlim((min(relative_to_ends) - 1, 0))
-
-    fig.tight_layout()
-
-    # Save to base64
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
-    buffer.seek(0)
-    image_base64 = base64.b64encode(buffer.read()).decode("utf-8")
-    plt.close()
-
-    return f"data:image/png;base64,{image_base64}"
 
 
 def create_distribution_plots(
